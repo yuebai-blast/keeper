@@ -31,10 +31,20 @@ class Penalty(BaseModel):
     points: float
 
 
+class ScoreComponent(BaseModel):
+    """基础分的一个加权构成项：points = value × weight（value 已化为 0–100 制）。"""
+
+    name: str
+    value: float = Field(description="信号分（0–100，= 原始 0–1 信号 ×100）")
+    weight: float
+    points: float = Field(description="对基础分的贡献 = value × weight")
+
+
 class ScoreDetail(BaseModel):
     """层① 单张照片的完整评分明细——所有能给前端看的中间信号都在这。"""
 
-    base: float = Field(description="扣分前的基础分（0–100）")
+    base: float = Field(description="扣分前的基础分（0–100）= 各构成项之和")
+    base_components: list[ScoreComponent] = Field(default_factory=list, description="基础分的加权构成明细")
     tech_quality: float = Field(description="技术质量分 0–1")
     tech_source: str = Field(description="技术质量来源：topiq_nr-face（有脸）或 topiq_nr（无脸）")
     clipiqa: float = Field(description="CLIP-IQA+ 美学分 0–1")

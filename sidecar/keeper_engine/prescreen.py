@@ -14,7 +14,12 @@ from __future__ import annotations
 import math
 
 from . import imaging, signals, vision
-from .models import FaceDetail, Group, LocalScore, Penalty, ScoreDetail
+from .models import FaceDetail, Group, LocalScore, Penalty, ScoreComponent, ScoreDetail
+
+# ── 基础分权重（三项加权和 ×100；可调旋钮）────────────────────────────────
+W_TECH = 0.45       # 技术质量（有脸 topiq_nr-face / 无脸 topiq_nr）
+W_AESTHETIC = 0.20  # 美学（CLIP-IQA+）
+W_SHARP = 0.35      # 主体锐度（归一）
 
 # ── 可调阈值（锐度类指标在 768 长边灰度上计算）──────────────────────────────
 SHARP_LOG_REF = math.log1p(400.0)  # 主体锐度归一参考：log1p(var)/此值 → ~[0,1]
@@ -68,7 +73,16 @@ def assess_photo(path: str, companions: tuple[str, ...] | list[str] = ()) -> Loc
 
     effective_sharp = main_sharp if main_sharp is not None else signals.region_sharpness(gray)
     sharp_norm = _clamp01(math.log1p(max(0.0, effective_sharp or 0.0)) / SHARP_LOG_REF)
-    base = (0.45 * tech + 0.20 * clipiqa + 0.35 * sharp_norm) * 100.0
+    # value 化为 0–100 制，使「value × weight = points」自洽（权重和为 1，满分 100）
+    components = [
+        ScoreComponent(name=f"技术质量({tech_source})", value=round(tech * 100, 2),
+                       weight=W_TECH, points=round(W_TECH * tech * 100, 2)),
+        ScoreComponent(name="美学(CLIP-IQA+)", value=round(clipiqa * 100, 2),
+                       weight=W_AESTHETIC, points=round(W_AESTHETIC * clipiqa * 100, 2)),
+        ScoreComponent(name="主体锐度", value=round(sharp_norm * 100, 2),
+                       weight=W_SHARP, points=round(W_SHARP * sharp_norm * 100, 2)),
+    ]
+    base = (W_TECH * tech + W_AESTHETIC * clipiqa + W_SHARP * sharp_norm) * 100.0
 
     # 人脸眼睛信号（main 算一次；全员闭眼需逐张高置信脸的 EAR）
     main_eye = vision.eye_open_score(main) if main is not None else None
@@ -87,7 +101,7 @@ def assess_photo(path: str, companions: tuple[str, ...] | list[str] = ()) -> Loc
     score = float(max(0.0, min(100.0, base - sum(p for _, p in hits))))
 
     detail = ScoreDetail(
-        base=round(base, 2),
+        base=round(base, 2), base_components=components,
         tech_quality=round(tech, 4), tech_source=tech_source, clipiqa=round(clipiqa, 4),
         sharpness=round(effective_sharp, 2) if effective_sharp is not None else None,
         sharpness_norm=round(sharp_norm, 4), entropy=round(ent, 3),

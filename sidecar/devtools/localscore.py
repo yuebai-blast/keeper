@@ -36,9 +36,10 @@ def main() -> None:
     if d is None:
         return
     print("  ── 明细 ──────────────────────────────")
-    print(f"  基础分(扣分前): {d.base}")
-    print(f"  技术质量[{d.tech_source}]: {d.tech_quality}    CLIP-IQA+(美学): {d.clipiqa}")
-    print(f"  主体锐度: {d.sharpness}  →  归一 {d.sharpness_norm}")
+    print(f"  基础分(扣分前): {d.base}  =  各项加权之和（满分 100）")
+    for c in d.base_components:
+        print(f"    {c.name}: {c.value} × {c.weight} = {c.points}")
+    print(f"  （主体锐度原始值 {d.sharpness} → 归一 {d.sharpness_norm}×100={round(d.sharpness_norm * 100, 2)}）")
     print(f"  曝光: 亮度均值 {d.brightness_mean} / 对比度 {d.contrast} / "
           f"欠曝比 {d.underexposed_ratio} / 过曝比 {d.overexposed_ratio}")
     print(f"  信息熵: {d.entropy}")
