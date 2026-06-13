@@ -1,10 +1,11 @@
 """本地模型懒加载（线程安全单例）——层① 用到的模型都在这里。
 
-本轮含：
+含：
+  - DINOv2（语义特征）：分组用，embed_image 出归一向量做视觉相似聚类。
+    选 v2 不选 v3：v2 是 Apache-2.0、HF 免门禁、自动下载即用、商用干净；v3 是 gated + 自定义许可。
   - InsightFace：层① 只加载「检测 + 68 关键点」（算锐度/闭眼），刻意不载识别模型
-    （用不到、加载更快、且避开非商用授权的 ArcFace；embedding 留给分组轮）。
+    （用不到、加载更快、且避开非商用授权的 ArcFace；识别 embedding 等做人脸聚类时再说）。
   - pyiqa：TOPIQ-nr-face（有脸时评人脸质量）/ TOPIQ-nr（无脸时评整图）+ CLIP-IQA+（美学）。
-（DINOv2/v3 语义特征留到「分组」轮，不在本文件本轮实现。）
 
 设计：
   - 模型缓存统一固定到 ~/.cache/keeper/models（HF / torch / insightface），可复现、不污染全局。
@@ -80,6 +81,51 @@ def _torch_device():
             return torch.device("cuda")
         return torch.device("cpu")
     return torch.device("cpu")
+
+
+# ── DINOv2：语义特征（分组用）────────────────────────────────────────────────
+
+def _ensure_dinov2():
+    _ensure_storage_configured()
+    if "dinov2" in _models:
+        return _models["dinov2"]
+    with _LOCK:
+        if "dinov2" in _models:
+            return _models["dinov2"]
+        try:
+            import torch  # noqa: F401
+            from transformers import AutoImageProcessor, AutoModel
+        except ImportError as e:
+            raise VisionUnavailable(f"DINOv2 依赖缺失：{e}（需 transformers + torch）") from e
+        model_id = os.environ.get("KEEPER_DINO_MODEL", "facebook/dinov2-small")
+        dev = _torch_device()
+        logger.info("vision: 加载 DINOv2 %s（device=%s，首次需下载权重）…", model_id, dev.type)
+        try:
+            proc = AutoImageProcessor.from_pretrained(model_id)
+            model = AutoModel.from_pretrained(model_id).to(dev).eval()
+        except Exception as e:
+            raise VisionUnavailable(f"DINOv2 加载失败：{e}") from e
+        _models["dinov2"] = (proc, model, dev)
+        logger.info("vision: DINOv2 就绪")
+    return _models["dinov2"]
+
+
+def embed_image(img: Image.Image) -> np.ndarray:
+    """返回一张图的 DINOv2 语义特征（L2 归一化的 float32 向量）。
+
+    归一后两向量点积即余弦相似度——分组用它衡量「视觉上是不是同一画面」。
+    """
+    import torch
+
+    proc, model, dev = _ensure_dinov2()
+    inputs = proc(images=img.convert("RGB"), return_tensors="pt").to(dev)
+    with torch.no_grad():
+        out = model(**inputs)
+    pooled = getattr(out, "pooler_output", None)
+    feat = pooled[0] if pooled is not None else out.last_hidden_state[0, 0]
+    v = feat.detach().cpu().numpy().astype(np.float32)
+    n = float(np.linalg.norm(v))
+    return v / n if n >= 1e-8 else v
 
 
 # ── pyiqa：TOPIQ-nr（技术质量）+ CLIP-IQA+（美学）────────────────────────────
@@ -270,3 +316,8 @@ def require_layer1_capabilities() -> None:
     _ensure_pyiqa("topiq", "topiq_nr", "TOPIQ-nr")
     _ensure_pyiqa("topiq_face", "topiq_nr-face", "TOPIQ-nr-face")
     _ensure_pyiqa("clipiqa", "clipiqa+", "CLIP-IQA+")
+
+
+def require_grouping_capabilities() -> None:
+    """分组所需模型（DINOv2）能加载，否则抛异常。"""
+    _ensure_dinov2()

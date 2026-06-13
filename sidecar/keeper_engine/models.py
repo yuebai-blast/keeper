@@ -123,10 +123,23 @@ class AssessRequest(BaseModel):
 
 
 class PhotoError(BaseModel):
-    """单张照片评分失败（数据问题，如文件损坏）——上报而非静默跳过。"""
+    """单张照片处理失败（数据问题，如文件损坏）——上报而非静默跳过。"""
 
     path: str
     error: str
+
+
+class GroupRequest(BaseModel):
+    """对一批照片做分组的请求。"""
+
+    photos: list[str] = Field(description="照片本地绝对路径")
+
+
+class GroupResponse(BaseModel):
+    """分组结果：若干瞬间组 + 读取失败的照片。"""
+
+    groups: list[Group]
+    errors: list[PhotoError] = Field(default_factory=list)
 
 
 class SurvivorEntry(BaseModel):

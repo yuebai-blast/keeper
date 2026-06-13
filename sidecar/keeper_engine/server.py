@@ -12,9 +12,17 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from . import __version__, params, prescreen, vision
+from . import __version__, grouping, params, prescreen, vision
 from .funnel import apply_funnel
-from .models import AssessRequest, AssessResponse, PhotoError, PkOrigin, SurvivorEntry
+from .models import (
+    AssessRequest,
+    AssessResponse,
+    GroupRequest,
+    GroupResponse,
+    PhotoError,
+    PkOrigin,
+    SurvivorEntry,
+)
 from .vision import VisionUnavailable
 
 logger = logging.getLogger("keeper_engine.server")
@@ -41,9 +49,10 @@ def _warmup() -> None:
     既不让首个请求卡几分钟，又不「假装健康」（不静默降级）。
     """
     try:
+        vision.require_grouping_capabilities()
         vision.require_layer1_capabilities()
         _readiness.status = "ready"
-        logger.info("server: 层① 模型预热完成，服务就绪")
+        logger.info("server: 分组 + 层① 模型预热完成，服务就绪")
     except Exception as e:  # noqa: BLE001 —— 捕获以经 /health 上报，而非让线程静默死掉
         _readiness.status = "error"
         _readiness.detail = f"{type(e).__name__}: {e}"
@@ -100,8 +109,35 @@ def assess(req: AssessRequest) -> AssessResponse:
     return AssessResponse(group_id=req.group_id, scores=scores, survivors=survivors, n=n, m=m, errors=errors)
 
 
+@app.post("/group", response_model=GroupResponse)
+def group(req: GroupRequest) -> GroupResponse:
+    """分组：把相似连拍聚成「瞬间组」（DINOv2 语义 × 时间邻近）。
+
+    模型未就绪直接 503；单张读图失败记入 errors、不中断；其余照片照常分组。
+    """
+    if _readiness.status != "ready":
+        raise HTTPException(
+            status_code=503,
+            detail=f"模型未就绪（{_readiness.status}）：{_readiness.detail or '预热中，请稍后重试'}",
+        )
+    paths, embeddings, times = [], [], []
+    errors: list[PhotoError] = []
+    for p in req.photos:
+        try:
+            emb, t = grouping.embed_photo(p)
+            paths.append(p)
+            embeddings.append(emb)
+            times.append(t)
+        except VisionUnavailable as e:
+            raise HTTPException(status_code=503, detail=f"本地模型不可用：{e}") from e
+        except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
+            errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
+
+    groups = grouping.cluster(paths, embeddings, times)
+    return GroupResponse(groups=groups, errors=errors)
+
+
 # TODO: 后续轮次补端点——
-#   POST /group     输入照片路径 → 分组（grouping.group_photos）
 #   POST /score     输入候选预览 → 层② 大模型 0–100 分（Scorer.score）
 #   POST /assemble  输入层② 分数 + N → PK 候选集（ranking.assemble_pk_set）
 

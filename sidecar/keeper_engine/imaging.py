@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -128,3 +129,24 @@ def make_preview(img: Image.Image, max_side: int = 896, max_bytes: int = 512 * 1
         if len(data) <= max_bytes:
             return data
     return data  # 最低质量仍超限：返回它，尺寸约束优先于字节约束
+
+
+def read_capture_time(img: Image.Image) -> datetime | None:
+    """从 EXIF 读拍摄时间（DateTimeOriginal + 亚秒）。读不到返回 None（按未知处理）。
+
+    分组用它做「时间邻近」信号：同一串连拍时间挨得很近。RAW 走内嵌预览/companion 时
+    通常仍带 EXIF；实在没有就退化为只靠语义相似度。
+    """
+    try:
+        exif = img.getexif()
+        ifd = exif.get_ifd(0x8769)  # Exif 子 IFD
+        dt_str = ifd.get(36867) or exif.get(306)  # DateTimeOriginal / DateTime
+        if not dt_str:
+            return None
+        dt = datetime.strptime(str(dt_str).strip(), "%Y:%m:%d %H:%M:%S")
+        subsec = str(ifd.get(37521, "")).strip()  # SubSecTimeOriginal
+        if subsec.isdigit():
+            dt = dt.replace(microsecond=int(subsec.ljust(6, "0")[:6]))
+        return dt
+    except Exception:
+        return None
