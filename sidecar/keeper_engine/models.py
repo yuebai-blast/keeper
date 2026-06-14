@@ -142,6 +142,25 @@ class GroupResponse(BaseModel):
     errors: list[PhotoError] = Field(default_factory=list)
 
 
+class ScoreRequest(BaseModel):
+    """对一个组的层① survivors 做层② 大模型打分的请求。"""
+
+    group_id: str
+    photos: list[str] = Field(description="层① 通过的候选原图路径（服务端生成低清预览后上传）")
+    group_total: int = Field(description="该组原始照片总数，用于算基础保底数 N")
+    model: str | None = Field(default=None, description="Ark 模型 id；不填用服务端默认/环境变量")
+
+
+class ScoreResponse(BaseModel):
+    """层② 打分结果：每张分数 + 漏斗收口组装的 PK 候选集。"""
+
+    group_id: str
+    scores: list[Score]
+    pk: list[PkEntry] = Field(description="进 PK 的候选（assemble_pk_set 结果，含 passed/quota_fill 来源）")
+    n: int = Field(description="基础保底数 N")
+    errors: list[PhotoError] = Field(default_factory=list)
+
+
 class SurvivorEntry(BaseModel):
     """通过层① 漏斗、进入层② 的一张候选 + 它为何通过（达标 / 兜底补入）。"""
 

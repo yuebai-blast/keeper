@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from . import __version__, grouping, params, prescreen, vision
+from . import __version__, grouping, imaging, params, prescreen, ranking, vision
 from .funnel import apply_funnel
 from .models import (
     AssessRequest,
@@ -21,8 +21,11 @@ from .models import (
     GroupResponse,
     PhotoError,
     PkOrigin,
+    ScoreRequest,
+    ScoreResponse,
     SurvivorEntry,
 )
+from .scorer import LocalDirectScorer, Preview, ScorerError
 from .vision import VisionUnavailable
 
 logger = logging.getLogger("keeper_engine.server")
@@ -137,9 +140,35 @@ def group(req: GroupRequest) -> GroupResponse:
     return GroupResponse(groups=groups, errors=errors)
 
 
-# TODO: 后续轮次补端点——
-#   POST /score     输入候选预览 → 层② 大模型 0–100 分（Scorer.score）
-#   POST /assemble  输入层② 分数 + N → PK 候选集（ranking.assemble_pk_set）
+@app.post("/score", response_model=ScoreResponse)
+def score(req: ScoreRequest) -> ScoreResponse:
+    """层② 大模型打分：对层① survivors 生成低清预览上云打分，再按保底数 N 组装 PK 候选集。
+
+    照片不出本地：只上传 make_preview 生成的低清 JPEG。
+    单张读图失败记入 errors；大模型不可用（缺 key / 网络）整体 502——不静默降级。
+    本端点只用 imaging + 远程 Ark，不依赖本地模型预热，故不设就绪门禁。
+    """
+    previews: list[Preview] = []
+    errors: list[PhotoError] = []
+    for p in req.photos:
+        try:
+            img = imaging.load_for_analysis(p)
+            previews.append(Preview(path=p, jpeg=imaging.make_preview(img)))
+        except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
+            errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
+
+    try:
+        scores = LocalDirectScorer(model=req.model).score(previews)
+    except ScorerError as e:
+        raise HTTPException(status_code=502, detail=f"层② 大模型打分失败：{e}") from e
+
+    n = params.compute_n(req.group_total)
+    pk_set = ranking.assemble_pk_set(req.group_id, scores, n)
+    return ScoreResponse(group_id=req.group_id, scores=scores, pk=pk_set.entries, n=n, errors=errors)
+
+
+# TODO: 后续轮次——/assemble 等编排端点（assemble_pk_set 已可直接复用）；
+#       桌面端 A/B 擂台终选与写回。
 
 
 def main() -> None:
