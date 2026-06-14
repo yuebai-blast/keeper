@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from "vue";
+import { thumbnailUrl } from "./api";
 import { useEngineStore } from "./stores/engine";
 import { useLibraryStore } from "./stores/library";
 
@@ -98,9 +99,16 @@ onUnmounted(stopPoll);
         <div class="groups">
           <article v-for="(g, i) in library.groups" :key="g.id" class="group">
             <header>组 {{ i + 1 }} <small>· {{ g.photos.length }} 张</small></header>
-            <ul>
-              <li v-for="p in g.photos" :key="p" :title="p">{{ basename(p) }}</li>
-            </ul>
+            <div class="thumbs">
+              <img
+                v-for="p in g.photos"
+                :key="p"
+                :src="thumbnailUrl(p)"
+                :title="basename(p)"
+                loading="lazy"
+                alt=""
+              />
+            </div>
           </article>
         </div>
       </template>
@@ -177,10 +185,17 @@ onUnmounted(stopPoll);
   border-radius: 10px;
   padding: 12px 14px;
 }
-.group > header { font-weight: 600; margin-bottom: 8px; }
+.group > header { font-weight: 600; margin-bottom: 10px; }
 .group > header small { color: var(--muted); font-weight: 400; }
-.group ul { margin: 0; padding-left: 18px; display: flex; flex-wrap: wrap; gap: 2px 18px; }
-.group li { color: var(--muted); font-size: 13px; list-style: "·  "; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.thumbs img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #2a2d38;
+  border: 1px solid var(--border);
+}
 </style>
 
 <style>

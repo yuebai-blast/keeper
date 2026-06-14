@@ -55,3 +55,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 export function groupPhotos(photos: string[]): Promise<GroupResponse> {
   return post<GroupResponse>("/group", { photos });
 }
+
+/** 缩略图直链（供 <img src>，由 sidecar 解码/缩放，支持 RAW/HEIC）。 */
+export function thumbnailUrl(path: string, size = 256): string {
+  return `${BASE}/thumbnail?path=${encodeURIComponent(path)}&size=${size}`;
+}
