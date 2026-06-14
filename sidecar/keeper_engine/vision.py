@@ -213,7 +213,8 @@ DETECT_MODULES = ("detection", "landmark_3d_68")
 # 与 DETECT_MODULES 是两个独立缓存实例（modules 不同）；识别需要 detection 输出的 5 点 kps 做对齐，
 # 不需要 68 关键点，故不含 landmark。⚠️ 识别模型仅限非商用研究，商用前需替换或授权（见模块 docstring）。
 GROUPING_FACE_MODULES = ("detection", "recognition")
-GROUPING_FACE_DET_MIN = 0.5  # 主脸最低检测置信度（低于此当背景误检，不取其身份）
+GROUPING_FACE_DET_MIN = 0.5     # 人脸最低检测置信度（低于此当背景误检，不取其身份）
+GROUPING_FACE_MIN_AREA = 0.005  # 人脸面积占比下限（过滤背景路人小脸，只留画面里的主要人物）
 
 
 def _face_pack() -> str:
@@ -294,24 +295,25 @@ def extract_faces(
     return out
 
 
-def main_face_embedding(img: Image.Image) -> np.ndarray | None:
-    """取一张照片「主脸」（置信度够、面积最大）的身份 embedding（512d 已归一），供分组按人区分。
+def face_embeddings(img: Image.Image) -> np.ndarray | None:
+    """取一张照片中所有合格人脸（置信度够、面积够大）的身份 embedding，堆叠成 (k×512) 已归一矩阵。
 
-    无脸 / 无合格主脸 / 该脸无识别向量时返回 None——分组遇 None 即不参与人脸约束，只靠语义+时间。
+    供分组按「人群」区分：保留全部主要人脸（非只主脸），多人合影也能比对是不是同一拨人。
+    无合格人脸时返回 None——分组遇 None 即不参与人脸约束，只靠语义+时间。
     用含 "recognition" 的独立实例，依赖问题照常抛 VisionUnavailable（不静默降级）。
     """
     faces = extract_faces(img, modules=GROUPING_FACE_MODULES)
     w, h = img.size
     area = float(w * h) or 1.0
-    best, best_area = None, 0.0
+    embs = []
     for f in faces:
         if f["det_score"] < GROUPING_FACE_DET_MIN or f.get("embedding") is None:
             continue
         x1, y1, x2, y2 = f["bbox"]
-        a = max(0.0, x2 - x1) * max(0.0, y2 - y1) / area
-        if a > best_area:
-            best, best_area = f, a
-    return best["embedding"] if best is not None else None
+        if max(0.0, x2 - x1) * max(0.0, y2 - y1) / area < GROUPING_FACE_MIN_AREA:
+            continue
+        embs.append(f["embedding"])
+    return np.stack(embs).astype(np.float32) if embs else None
 
 
 def eye_open_score(face: dict) -> float | None:

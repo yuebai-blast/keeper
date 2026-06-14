@@ -12,6 +12,11 @@ def _unit(*v) -> np.ndarray:
     return a / np.linalg.norm(a)
 
 
+def _faces(*vecs) -> np.ndarray:
+    """把若干已归一人脸向量堆叠成 (k×d) 人脸集合。"""
+    return np.stack(vecs)
+
+
 T0 = datetime(2024, 1, 1, 12, 0, 0)
 
 
@@ -49,9 +54,10 @@ def test_missing_time_falls_back_to_semantics():
 
 
 def test_same_scene_different_people_split():
-    """画面相同、时间相同，但主脸身份不同 → 人脸因子把不同人拆成两组。"""
+    """画面相同、时间相同，但人脸身份不同 → 人脸因子把不同人拆成两组。"""
     embs = [_unit(1, 0, 0)] * 4
-    faces = [_unit(1, 0, 0, 0), _unit(1, 0, 0, 0), _unit(0, 1, 0, 0), _unit(0, 1, 0, 0)]
+    p1, p2 = _unit(1, 0, 0, 0), _unit(0, 1, 0, 0)
+    faces = [_faces(p1), _faces(p1), _faces(p2), _faces(p2)]
     groups = cluster(["a1", "a2", "b1", "b2"], embs, [T0] * 4, faces)
     assert len(groups) == 2
     photos = {frozenset(g.photos) for g in groups}
@@ -61,13 +67,30 @@ def test_same_scene_different_people_split():
 def test_same_scene_same_person_one_group():
     """画面相同、时间相同、同一个人 → 人脸因子≈1，不干预，仍归一组。"""
     embs = [_unit(1, 0, 0)] * 2
-    faces = [_unit(1, 0, 0, 0), _unit(1, 0, 0, 0)]
-    groups = cluster(["a", "b"], embs, [T0] * 2, faces)
+    p1 = _unit(1, 0, 0, 0)
+    groups = cluster(["a", "b"], embs, [T0] * 2, [_faces(p1), _faces(p1)])
     assert len(groups) == 1 and set(groups[0].photos) == {"a", "b"}
 
 
-def test_face_missing_does_not_penalize():
-    """任一张无主脸（None）→ 人脸因子=1，不惩罚相似度，退回纯语义+时间（同场景归一组）。"""
+def test_group_photo_same_people_one_group():
+    """两张多人合影、同一拨人（同一组身份集合）→ 集合相似度高，归一组。"""
     embs = [_unit(1, 0, 0)] * 2
-    groups = cluster(["a", "b"], embs, [T0] * 2, [None, _unit(0, 1, 0, 0)])
+    p1, p2 = _unit(1, 0, 0, 0), _unit(0, 1, 0, 0)
+    groups = cluster(["a", "b"], embs, [T0] * 2, [_faces(p1, p2), _faces(p1, p2)])
+    assert len(groups) == 1 and set(groups[0].photos) == {"a", "b"}
+
+
+def test_group_photo_different_people_split():
+    """两张合影人群完全不同（无重叠）→ 集合相似度≈0，拆成两组。"""
+    embs = [_unit(1, 0, 0)] * 2
+    p1, p2 = _unit(1, 0, 0, 0), _unit(0, 1, 0, 0)
+    p3, p4 = _unit(0, 0, 1, 0), _unit(0, 0, 0, 1)
+    groups = cluster(["a", "b"], embs, [T0] * 2, [_faces(p1, p2), _faces(p3, p4)])
+    assert len(groups) == 2
+
+
+def test_face_missing_does_not_penalize():
+    """任一张无脸（None）→ 人脸因子=1，不惩罚相似度，退回纯语义+时间（同场景归一组）。"""
+    embs = [_unit(1, 0, 0)] * 2
+    groups = cluster(["a", "b"], embs, [T0] * 2, [None, _faces(_unit(0, 1, 0, 0))])
     assert len(groups) == 1 and set(groups[0].photos) == {"a", "b"}
