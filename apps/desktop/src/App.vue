@@ -112,9 +112,24 @@ onUnmounted(stopPoll);
       <template v-else>
         <div class="groups-head">
           <strong>{{ library.total }} 张 → {{ library.groups.length }} 个瞬间组</strong>
+          <small class="muted">已裁决 {{ library.decidedCount }}/{{ library.groups.length }}</small>
+          <span class="grow" />
           <button class="btn ghost" :disabled="library.busy" @click="library.reset">重新导入</button>
         </div>
         <p v-if="library.errors.length" class="hint err">{{ library.errors.length }} 张读取失败</p>
+
+        <div v-if="library.decidedCount" class="archive-bar">
+          <span>归档 {{ library.decidedCount }} 组裁决：</span>
+          <button class="btn ghost" :disabled="library.archiving" @click="library.archive('copy')">复制</button>
+          <button class="btn ghost" :disabled="library.archiving" @click="library.archive('move')">移动</button>
+          <button class="btn ghost" :disabled="library.archiving" @click="library.archive('manifest')">仅清单</button>
+          <span v-if="library.archiving" class="muted">归档中…</span>
+          <span v-else-if="library.archiveSummary" class="ok">
+            ✓ 留 {{ library.archiveSummary.winners }} · 弃 {{ library.archiveSummary.losers }}
+            <template v-if="library.archiveSummary.errors.length">· {{ library.archiveSummary.errors.length }} 个失败</template>
+          </span>
+          <span v-if="library.archiveError" class="err">{{ library.archiveError }}</span>
+        </div>
         <div class="groups">
           <article v-for="(g, i) in library.groups" :key="g.id" class="group">
             <header>
@@ -227,7 +242,22 @@ onUnmounted(stopPoll);
   text-align: center;
 }
 
-.groups-head { display: flex; align-items: center; justify-content: space-between; }
+.groups-head { display: flex; align-items: center; gap: 10px; }
+.groups-head .grow { flex: 1; }
+.archive-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin-top: 10px;
+}
+.archive-bar .ok { color: #34d399; }
+.archive-bar .err { color: #f87171; }
 .groups { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
 .group {
   background: var(--card);

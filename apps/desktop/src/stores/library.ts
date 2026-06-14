@@ -18,6 +18,16 @@ interface GroupDecision {
   losers: string[]; // 被淘汰的
 }
 
+/** 归档（写回磁盘）结果，与 Rust archive_decisions 的 ArchiveSummary 对齐。 */
+export interface ArchiveSummary {
+  winners: number;
+  losers: number;
+  manifest: string;
+  errors: string[];
+}
+
+export type ArchiveMode = "copy" | "move" | "manifest";
+
 interface LibraryState {
   imported: boolean; // 是否已导入并分组
   total: number; // 导入的照片数
@@ -27,6 +37,9 @@ interface LibraryState {
   error: string; // 流程级错误（取消不算）
   assessments: Record<string, GroupAssessment>; // 组 id → 层①评分
   decisions: Record<string, GroupDecision>; // 组 id → 擂台终选
+  archiving: boolean;
+  archiveSummary: ArchiveSummary | null;
+  archiveError: string;
 }
 
 export const useLibraryStore = defineStore("library", {
@@ -39,6 +52,9 @@ export const useLibraryStore = defineStore("library", {
     error: "",
     assessments: {},
     decisions: {},
+    archiving: false,
+    archiveSummary: null,
+    archiveError: "",
   }),
   getters: {
     /** 进擂台的候选：评过分用层①幸存者，否则用全组照片。 */
@@ -46,6 +62,8 @@ export const useLibraryStore = defineStore("library", {
       const survivors = s.assessments[group.id]?.survivorPaths;
       return survivors && survivors.length ? survivors : group.photos;
     },
+    /** 已裁决的组数。 */
+    decidedCount: (s): number => Object.keys(s.decisions).length,
   },
   actions: {
     /** 弹目录选择器（Rust 壳扫图）→ 调 sidecar 分组。用户取消则什么都不做。 */
@@ -85,6 +103,26 @@ export const useLibraryStore = defineStore("library", {
     decideGroup(groupId: string, winner: string | null, losers: string[]) {
       this.decisions[groupId] = { winner, losers };
     },
+    /** 把所有裁决写回磁盘（Rust 壳做 FS 操作）。mode: copy / move / manifest。 */
+    async archive(mode: ArchiveMode) {
+      const winners: string[] = [];
+      const losers: string[] = [];
+      for (const d of Object.values(this.decisions)) {
+        if (d.winner) winners.push(d.winner);
+        losers.push(...d.losers);
+      }
+      if (!winners.length && !losers.length) return;
+      this.archiving = true;
+      this.archiveError = "";
+      this.archiveSummary = null;
+      try {
+        this.archiveSummary = await invoke<ArchiveSummary>("archive_decisions", { winners, losers, mode });
+      } catch (e) {
+        this.archiveError = e instanceof Error ? e.message : String(e);
+      } finally {
+        this.archiving = false;
+      }
+    },
     reset() {
       this.imported = false;
       this.total = 0;
@@ -93,6 +131,8 @@ export const useLibraryStore = defineStore("library", {
       this.error = "";
       this.assessments = {};
       this.decisions = {};
+      this.archiveSummary = null;
+      this.archiveError = "";
     },
   },
 });
