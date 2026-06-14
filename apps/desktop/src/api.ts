@@ -3,11 +3,21 @@
 
 const BASE = import.meta.env.VITE_SIDECAR_URL ?? "http://127.0.0.1:8761";
 
-/** /health 返回：模型就绪态。 */
+/** 模型加载进度。 */
+export interface Progress {
+  current: number; // 已完成的步骤数
+  total: number; // 总步骤数
+  step: string; // 当前正在加载的步骤名
+}
+
+/** /health 返回：模型就绪态 + 加载进度。 */
 export interface Health {
   status: "loading" | "ready" | "error" | string;
   version: string;
   detail: string;
+  retryable: boolean; // error 时是否可重试（依赖缺失=false）
+  first_run: boolean; // 是否首次（模型缓存为空、需联网下载）
+  progress: Progress;
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -21,6 +31,11 @@ async function get<T>(path: string): Promise<T> {
 /** 查询 sidecar 健康/就绪状态。连不上会抛错（服务没起）。 */
 export function getHealth(): Promise<Health> {
   return get<Health>("/health");
+}
+
+/** 重新预热模型（仅在可重试的 error 时生效，用于下载失败重试）。返回最新就绪态。 */
+export function retryWarmup(): Promise<Health> {
+  return post<Health>("/warmup/retry", {});
 }
 
 /** 一个「瞬间组」。 */
