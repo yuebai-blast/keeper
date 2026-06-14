@@ -22,3 +22,36 @@ async function get<T>(path: string): Promise<T> {
 export function getHealth(): Promise<Health> {
   return get<Health>("/health");
 }
+
+/** 一个「瞬间组」。 */
+export interface Group {
+  id: string;
+  photos: string[];
+}
+
+export interface PhotoError {
+  path: string;
+  error: string;
+}
+
+export interface GroupResponse {
+  groups: Group[];
+  errors: PhotoError[];
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const resp = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+  }
+  return resp.json() as Promise<T>;
+}
+
+/** 把一批照片路径分成「瞬间组」（DINOv2 语义 + 时间）。 */
+export function groupPhotos(photos: string[]): Promise<GroupResponse> {
+  return post<GroupResponse>("/group", { photos });
+}

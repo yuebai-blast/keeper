@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from "vue";
 import { useEngineStore } from "./stores/engine";
+import { useLibraryStore } from "./stores/library";
 
 const engine = useEngineStore();
+const library = useLibraryStore();
 let timer: number | undefined;
 
 // 终态：就绪或加载失败后不再轮询；其余（连不上/加载中）持续重试
@@ -40,6 +42,8 @@ const label = computed(() => {
   return "模型加载中…";
 });
 
+const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
 onMounted(async () => {
   await engine.refresh();
   startPoll();
@@ -54,88 +58,87 @@ onUnmounted(stopPoll);
       <p class="tagline">把最好的留下，留在你自己的电脑里</p>
     </header>
 
-    <section class="card">
-      <div class="status">
-        <span class="indicator" :class="dot" />
-        <div class="status-text">
-          <strong>{{ label }}</strong>
-          <small v-if="engine.health">引擎 v{{ engine.health.version }}</small>
-        </div>
-        <button class="btn" :disabled="engine.phase === 'connecting'" @click="reconnect">重连</button>
-      </div>
-
-      <p v-if="engine.phase === 'offline'" class="hint">
-        请先在另一个终端启动推理服务：<code>mise run sidecar</code>
-      </p>
-      <p v-else-if="engine.health?.status === 'loading'" class="hint">
-        首次启动正在下载/载入本地模型，稍候片刻…
-      </p>
-      <p v-else-if="engine.health?.status === 'error'" class="hint err">
-        {{ engine.health.detail }}
-      </p>
-      <p v-else-if="engine.ready" class="hint ok">
-        分组 / 本地评分 / 大模型打分 已就绪。
-      </p>
+    <!-- 引擎就绪态（紧凑条） -->
+    <section class="statusbar">
+      <span class="indicator" :class="dot" />
+      <span class="status-label">{{ label }}</span>
+      <small v-if="engine.health" class="ver">引擎 v{{ engine.health.version }}</small>
+      <button class="btn ghost" :disabled="engine.phase === 'connecting'" @click="reconnect">重连</button>
     </section>
+    <p v-if="engine.phase === 'offline'" class="hint">
+      请先在另一个终端启动推理服务：<code>mise run sidecar</code>
+    </p>
+    <p v-else-if="engine.health?.status === 'loading'" class="hint">
+      首次启动正在下载/载入本地模型，稍候片刻…
+    </p>
+    <p v-else-if="engine.health?.status === 'error'" class="hint err">{{ engine.health.detail }}</p>
 
-    <footer class="next">
-      下一步：导入照片目录 → 分组 → 评分 → A/B 擂台终选（开发中）
-    </footer>
+    <!-- 工作区：导入 → 分组 -->
+    <section class="workspace">
+      <template v-if="!engine.ready">
+        <p class="placeholder">服务就绪后即可导入照片目录。</p>
+      </template>
+
+      <template v-else-if="!library.imported">
+        <div class="import-zone">
+          <button class="btn primary" :disabled="library.busy" @click="library.importAndGroup">
+            {{ library.busy ? "正在分组…" : "导入照片目录" }}
+          </button>
+          <p class="hint">选一个文件夹，Keeper 会把相似的连拍聚成「瞬间组」。</p>
+          <p v-if="library.error" class="hint err">{{ library.error }}</p>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="groups-head">
+          <strong>{{ library.total }} 张 → {{ library.groups.length }} 个瞬间组</strong>
+          <button class="btn ghost" :disabled="library.busy" @click="library.reset">重新导入</button>
+        </div>
+        <p v-if="library.errors.length" class="hint err">{{ library.errors.length }} 张读取失败</p>
+        <div class="groups">
+          <article v-for="(g, i) in library.groups" :key="g.id" class="group">
+            <header>组 {{ i + 1 }} <small>· {{ g.photos.length }} 张</small></header>
+            <ul>
+              <li v-for="p in g.photos" :key="p" :title="p">{{ basename(p) }}</li>
+            </ul>
+          </article>
+        </div>
+      </template>
+    </section>
   </main>
 </template>
 
 <style scoped>
 .app {
-  max-width: 640px;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 14vh 24px 0;
+  padding: 48px 24px 40px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 16px;
 }
-.brand h1 {
-  margin: 0;
-  font-size: 34px;
-  letter-spacing: 0.5px;
-}
-.brand h1 span {
-  color: var(--muted);
-  font-weight: 400;
-}
-.tagline {
-  margin: 8px 0 0;
-  color: var(--muted);
-}
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 20px;
-}
-.status {
+.brand h1 { margin: 0; font-size: 30px; letter-spacing: 0.5px; }
+.brand h1 span { color: var(--muted); font-weight: 400; }
+.tagline { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+
+.statusbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
 }
-.indicator {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  flex: none;
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04);
-}
+.indicator { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .indicator.ready { background: #34d399; }
 .indicator.loading { background: #fbbf24; animation: pulse 1.2s infinite; }
 .indicator.error { background: #f87171; }
 .indicator.offline { background: #6b7280; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-.status-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-.status-text small { color: var(--muted); }
+.status-label { font-weight: 500; }
+.ver { color: var(--muted); margin-left: auto; }
+
 .btn {
   border: 1px solid var(--border);
   background: transparent;
@@ -143,26 +146,41 @@ onUnmounted(stopPoll);
   border-radius: 8px;
   padding: 7px 14px;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  font: inherit;
+  transition: border-color 0.2s, background 0.2s, opacity 0.2s;
 }
 .btn:hover:not(:disabled) { border-color: #6366f1; background: rgba(99, 102, 241, 0.1); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.hint {
-  margin: 16px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-.hint.ok { color: #34d399; }
+.btn.primary { background: #6366f1; border-color: #6366f1; color: #fff; padding: 11px 22px; font-size: 15px; }
+.btn.primary:hover:not(:disabled) { background: #5457e0; }
+.btn.ghost { padding: 6px 12px; font-size: 13px; }
+
+.hint { margin: 0; color: var(--muted); font-size: 14px; }
 .hint.err { color: #f87171; }
-.hint code {
-  background: rgba(255, 255, 255, 0.06);
-  padding: 2px 7px;
-  border-radius: 5px;
+.hint code { background: rgba(255, 255, 255, 0.06); padding: 2px 7px; border-radius: 5px; }
+.placeholder { color: var(--muted); }
+
+.import-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 0;
+  text-align: center;
 }
-.next {
-  color: var(--muted);
-  font-size: 13px;
+
+.groups-head { display: flex; align-items: center; justify-content: space-between; }
+.groups { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.group {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
 }
+.group > header { font-weight: 600; margin-bottom: 8px; }
+.group > header small { color: var(--muted); font-weight: 400; }
+.group ul { margin: 0; padding-left: 18px; display: flex; flex-wrap: wrap; gap: 2px 18px; }
+.group li { color: var(--muted); font-size: 13px; list-style: "·  "; }
 </style>
 
 <style>
