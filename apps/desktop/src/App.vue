@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { thumbnailUrl, type Group } from "./api";
+import Arena from "./components/Arena.vue";
 import { useEngineStore } from "./stores/engine";
 import { useLibraryStore } from "./stores/library";
 
@@ -53,6 +54,14 @@ function orderedPhotos(g: Group): string[] {
   const a = library.assessments[g.id];
   if (!a) return g.photos;
   return [...g.photos].sort((x, y) => (a.scoresByPath[y]?.score ?? -1) - (a.scoresByPath[x]?.score ?? -1));
+}
+
+// 擂台
+const arenaGroup = ref<Group | null>(null);
+const decisionOf = (id: string) => library.decisions[id];
+function onArenaFinish(winner: string | null, losers: string[]) {
+  if (arenaGroup.value) library.decideGroup(arenaGroup.value.id, winner, losers);
+  arenaGroup.value = null;
 }
 
 onMounted(async () => {
@@ -123,6 +132,8 @@ onUnmounted(stopPoll);
               >
                 评分
               </button>
+              <button v-if="!decisionOf(g.id)" class="btn ghost" @click="arenaGroup = g">进擂台</button>
+              <small v-else class="muted">{{ decisionOf(g.id)?.winner ? "✓ 已选定" : "✕ 已舍弃" }}</small>
             </header>
             <p v-if="assessmentOf(g.id)?.error" class="hint err">{{ assessmentOf(g.id)?.error }}</p>
             <div class="thumbs">
@@ -130,8 +141,10 @@ onUnmounted(stopPoll);
                 v-for="p in orderedPhotos(g)"
                 :key="p"
                 :class="{
-                  survivor: isSurvivor(g.id, p),
-                  out: !!assessmentOf(g.id) && !assessmentOf(g.id)?.busy && !isSurvivor(g.id, p),
+                  survivor: !decisionOf(g.id) && isSurvivor(g.id, p),
+                  out: !decisionOf(g.id) && !!assessmentOf(g.id) && !assessmentOf(g.id)?.busy && !isSurvivor(g.id, p),
+                  chosen: decisionOf(g.id)?.winner === p,
+                  discarded: !!decisionOf(g.id) && decisionOf(g.id)?.winner !== p,
                 }"
                 :title="scoreOf(g.id, p) ? scoreOf(g.id, p)!.score + ' · ' + (scoreOf(g.id, p)!.primary_reason || '无明显问题') : basename(p)"
               >
@@ -144,6 +157,13 @@ onUnmounted(stopPoll);
       </template>
     </section>
   </main>
+
+  <Arena
+    v-if="arenaGroup"
+    :candidates="library.candidatesOf(arenaGroup!)"
+    @finish="onArenaFinish"
+    @close="arenaGroup = null"
+  />
 </template>
 
 <style scoped>
@@ -256,6 +276,8 @@ onUnmounted(stopPoll);
 }
 .thumbs figure.survivor { border-color: #34d399; }
 .thumbs figure.out { opacity: 0.4; }
+.thumbs figure.chosen { border-color: #fbbf24; box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35); }
+.thumbs figure.discarded { opacity: 0.3; }
 </style>
 
 <style>

@@ -12,6 +12,12 @@ interface GroupAssessment {
   error: string;
 }
 
+/** 用户在擂台上对一个组的终选结果。 */
+interface GroupDecision {
+  winner: string | null; // 胜出留存的那张；整组舍弃时为 null
+  losers: string[]; // 被淘汰的
+}
+
 interface LibraryState {
   imported: boolean; // 是否已导入并分组
   total: number; // 导入的照片数
@@ -20,6 +26,7 @@ interface LibraryState {
   busy: boolean; // 导入/分组进行中
   error: string; // 流程级错误（取消不算）
   assessments: Record<string, GroupAssessment>; // 组 id → 层①评分
+  decisions: Record<string, GroupDecision>; // 组 id → 擂台终选
 }
 
 export const useLibraryStore = defineStore("library", {
@@ -31,7 +38,15 @@ export const useLibraryStore = defineStore("library", {
     busy: false,
     error: "",
     assessments: {},
+    decisions: {},
   }),
+  getters: {
+    /** 进擂台的候选：评过分用层①幸存者，否则用全组照片。 */
+    candidatesOf: (s) => (group: Group): string[] => {
+      const survivors = s.assessments[group.id]?.survivorPaths;
+      return survivors && survivors.length ? survivors : group.photos;
+    },
+  },
   actions: {
     /** 弹目录选择器（Rust 壳扫图）→ 调 sidecar 分组。用户取消则什么都不做。 */
     async importAndGroup() {
@@ -66,6 +81,10 @@ export const useLibraryStore = defineStore("library", {
         a.busy = false;
       }
     },
+    /** 记录某组的擂台终选结果。 */
+    decideGroup(groupId: string, winner: string | null, losers: string[]) {
+      this.decisions[groupId] = { winner, losers };
+    },
     reset() {
       this.imported = false;
       this.total = 0;
@@ -73,6 +92,7 @@ export const useLibraryStore = defineStore("library", {
       this.errors = [];
       this.error = "";
       this.assessments = {};
+      this.decisions = {};
     },
   },
 });
