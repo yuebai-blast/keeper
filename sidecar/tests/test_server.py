@@ -112,3 +112,22 @@ def test_score_502_when_scorer_unavailable(monkeypatch):
     with pytest.raises(HTTPException) as ei:
         server.score(ScoreRequest(group_id="g", photos=["a"], group_total=3))
     assert ei.value.status_code == 502
+
+
+def test_thumbnail_returns_jpeg(monkeypatch):
+    monkeypatch.setattr(server.imaging, "load_for_analysis", lambda p, *a, **k: object())
+    monkeypatch.setattr(server.imaging, "make_thumbnail", lambda img, **k: b"\xff\xd8jpeg")
+    resp = server.thumbnail(path="/x.jpg", size=256)
+    assert resp.media_type == "image/jpeg" and resp.body == b"\xff\xd8jpeg"
+
+
+def test_thumbnail_404_on_bad_path(monkeypatch):
+    from fastapi import HTTPException
+
+    def boom(p, *a, **k):
+        raise FileNotFoundError("nope")
+
+    monkeypatch.setattr(server.imaging, "load_for_analysis", boom)
+    with pytest.raises(HTTPException) as ei:
+        server.thumbnail(path="/missing.jpg", size=256)
+    assert ei.value.status_code == 404

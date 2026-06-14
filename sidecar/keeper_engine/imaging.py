@@ -131,6 +131,17 @@ def make_preview(img: Image.Image, max_side: int = 896, max_bytes: int = 512 * 1
     return data  # 最低质量仍超限：返回它，尺寸约束优先于字节约束
 
 
+def make_thumbnail(img: Image.Image, max_side: int = 256, quality: int = 80) -> bytes:
+    """生成小缩略图 JPEG 字节，供桌面端画廊显示。
+
+    走 sidecar 而非 webview 直读，是因为它能解 RAW/HEIC 并统一缩放——浏览器做不到。
+    """
+    out = _resized(img.convert("RGB"), max_side)
+    buf = io.BytesIO()
+    out.save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
+
+
 def read_capture_time(img: Image.Image) -> datetime | None:
     """从 EXIF 读拍摄时间（DateTimeOriginal + 亚秒）。读不到返回 None（按未知处理）。
 

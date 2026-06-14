@@ -10,8 +10,9 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from . import __version__, grouping, imaging, params, prescreen, ranking, vision
 from .funnel import apply_funnel
@@ -86,6 +87,24 @@ app.add_middleware(
 def health() -> dict:
     """liveness + 模型就绪态。status 为 loading/ready/error；error 时 detail 含原因。"""
     return {"status": _readiness.status, "version": __version__, "detail": _readiness.detail}
+
+
+@app.get("/thumbnail")
+def thumbnail(
+    path: str = Query(..., description="照片绝对路径"),
+    size: int = Query(256, ge=32, le=1024, description="缩略图长边像素"),
+) -> Response:
+    """生成并返回一张照片的缩略图 JPEG（桌面端画廊用）。
+
+    sidecar 能解 RAW/HEIC 并缩放（webview 做不到）；只走 localhost，照片不出本地。
+    读图失败 → 404。
+    """
+    try:
+        img = imaging.load_for_analysis(path)
+        jpeg = imaging.make_thumbnail(img, max_side=size)
+    except Exception as e:  # noqa: BLE001 —— 路径无效/损坏当 404
+        raise HTTPException(status_code=404, detail=f"{type(e).__name__}: {e}") from e
+    return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
 
 @app.post("/assess", response_model=AssessResponse)
