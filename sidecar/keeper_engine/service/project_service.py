@@ -1,0 +1,382 @@
+"""项目工作流编排——持久化权威 + 文件操作 + 复用现有两层评分引擎。
+
+把零散的引擎能力（分组 / 层① / 层②）串成可持久化、可恢复的「项目」流程：
+  preview → create（复制副本）→ group（分组）→ assess_group（层①+层②，初始化去留）
+  → update_selection / PK（用户裁决）→ confirm_group → complete（归档+清理 workspace）。
+
+照片不出本地：只动 workspace 副本与输出目录，绝不写源文件夹；拍摄地只把坐标交给在线反查。
+不静默降级：本地模型未就绪 503、大模型不可用 502 由所复用的引擎 service 抛出，这里不吞。
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import HTTPException
+from PIL import Image
+
+from ..client.geocode_client import GeocodeClient
+from ..config.settings import Settings
+from ..entity.photo_group import PhotoGroup
+from ..entity.project import Project
+from ..entity.project_photo import ProjectPhoto
+from ..enumeration.group_status import GroupStatus
+from ..enumeration.project_status import ProjectStatus
+from ..enumeration.selection import Selection
+from ..mapper.photo_group_mapper import PhotoGroupMapper
+from ..mapper.project_mapper import ProjectMapper
+from ..mapper.project_photo_mapper import ProjectPhotoMapper
+from ..request.assess_request import AssessRequest, PhotoRef
+from ..request.group_request import GroupRequest
+from ..request.project_request import SelectionChange
+from ..request.score_request import ScoreRequest
+from ..response.common import PhotoError
+from ..response.project_response import (
+    CompleteResponse,
+    GroupDetailResponse,
+    GroupSummary,
+    PhotoView,
+    ProjectDetailResponse,
+    ProjectPreviewResponse,
+    ProjectView,
+)
+from ..util import imaging
+from .assess_service import AssessService
+from .grouping_service import GroupingService
+from .pk_service import PkService
+from .scoring_service import ScoringService
+from .workspace_service import WorkspaceService
+
+
+class ProjectService:
+    """项目工作流编排核心。"""
+
+    def __init__(
+        self,
+        project_mapper: ProjectMapper,
+        photo_mapper: ProjectPhotoMapper,
+        group_mapper: PhotoGroupMapper,
+        grouping: GroupingService,
+        assess: AssessService,
+        scoring: ScoringService,
+        pk: PkService,
+        workspace: WorkspaceService,
+        geocode: GeocodeClient,
+        settings: Settings,
+    ) -> None:
+        self._projects = project_mapper
+        self._photos = photo_mapper
+        self._groups = group_mapper
+        self._grouping = grouping
+        self._assess = assess
+        self._scoring = scoring
+        self._pk = pk
+        self._workspace = workspace
+        self._geocode = geocode
+        self._settings = settings
+
+    # ── 页面一：预览 + 创建 ──────────────────────────────────────────────────
+
+    def preview(self, folder: str) -> ProjectPreviewResponse:
+        """扫描源文件夹：统计数量、拍摄时间范围、拍摄地（不建项目，不复制）。"""
+        try:
+            files = self._workspace.scan_images(folder)
+        except (NotADirectoryError, FileNotFoundError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        times: list[datetime] = []
+        locations: list[str] = []
+        errors: list[PhotoError] = []
+        for f in files:
+            t, loc, err = self._extract(str(f))
+            if err:
+                errors.append(PhotoError(path=str(f), error=err))
+            if t:
+                times.append(t)
+            if loc:
+                locations.append(loc)
+
+        return ProjectPreviewResponse(
+            count=len(files),
+            time_start=min(times) if times else None,
+            time_end=max(times) if times else None,
+            location=self._most_common(locations),
+            errors=errors,
+        )
+
+    def create(self, name: str, source_folder: str) -> ProjectView:
+        """新建项目：校验名唯一 → 复制副本到 workspace → 落库照片与时间/拍摄地。"""
+        name = self._validate_name(name)
+        if self._projects.get_by_name(name):
+            raise HTTPException(status_code=409, detail=f"项目名已存在：{name}")
+        try:
+            files = self._workspace.scan_images(source_folder)
+        except (NotADirectoryError, FileNotFoundError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        if not files:
+            raise HTTPException(status_code=400, detail="该文件夹内没有可导入的图片")
+
+        workspace_dir = str(self._settings.workspace_dir / name)
+        target_dir = str(self._settings.output_root / name)
+        mapping = self._workspace.copy_into([str(f) for f in files], workspace_dir)
+
+        rows: list[ProjectPhoto] = []
+        times: list[datetime] = []
+        locations: list[str] = []
+        for src, dest in mapping:
+            t, loc, _ = self._extract(dest)
+            if t:
+                times.append(t)
+            if loc:
+                locations.append(loc)
+            rows.append(ProjectPhoto(
+                project_id=0,  # 占位，create 后回填
+                workspace_path=dest, original_path=src, filename=Path(dest).name,
+                capture_time=t, location=loc,
+            ))
+
+        project = self._projects.create(Project(
+            name=name, source_folder=source_folder,
+            workspace_dir=workspace_dir, target_dir=target_dir,
+            status=ProjectStatus.GROUPING.value, photo_count=len(rows),
+            time_start=min(times) if times else None,
+            time_end=max(times) if times else None,
+            location=self._most_common(locations),
+        ))
+        for r in rows:
+            r.project_id = project.id
+        self._photos.bulk_create(rows)
+        return ProjectView.model_validate(project)
+
+    # ── 分组 ────────────────────────────────────────────────────────────────
+
+    def group(self, project_id: int) -> ProjectDetailResponse:
+        """对 workspace 照片分组并持久化；已分组则直接返回详情（不重复分组）。"""
+        project = self._require_project(project_id)
+        if project.status != ProjectStatus.GROUPING.value:
+            return self.get_detail(project_id)
+
+        photos = self._photos.by_project(project_id)
+        by_path = {p.workspace_path: p for p in photos}
+        resp = self._grouping.group(GroupRequest(photos=list(by_path.keys())))
+
+        changed: list[ProjectPhoto] = []
+        group_rows: list[PhotoGroup] = []
+        for g in resp.groups:
+            members = [by_path[p] for p in g.photos if p in by_path]
+            for ph in members:
+                ph.group_key = g.id
+                changed.append(ph)
+            times = [m.capture_time for m in members if m.capture_time]
+            group_rows.append(PhotoGroup(
+                project_id=project_id, group_key=g.id,
+                location=self._most_common([m.location for m in members if m.location]),
+                time_start=min(times) if times else None,
+                time_end=max(times) if times else None,
+                status=GroupStatus.PENDING.value,
+            ))
+        if changed:
+            self._photos.update_many(changed)
+        if group_rows:
+            self._groups.bulk_create(group_rows)
+
+        project.status = ProjectStatus.SELECTING.value
+        self._projects.update(project)
+        return self.get_detail(project_id)
+
+    # ── 评测（层①+层②）──────────────────────────────────────────────────────
+
+    def assess_group(self, project_id: int, group_key: str) -> GroupDetailResponse:
+        """对一组跑层①+层②并持久化、初始化去留；已评测则原样返回（不覆盖用户裁决）。"""
+        group = self._require_group(project_id, group_key)
+        if group.status != GroupStatus.PENDING.value:
+            return self.get_group_detail(project_id, group_key)
+
+        photos = self._photos.by_group(project_id, group_key)
+        if not photos:
+            group.status = GroupStatus.ASSESSED.value
+            self._groups.update(group)
+            return self.get_group_detail(project_id, group_key)
+
+        by_path = {p.workspace_path: p for p in photos}
+
+        # 层①：本地评分（模型未就绪 → 503 上抛）。先持久化，保证层②失败时层①不白跑。
+        assess_resp = self._assess.assess(AssessRequest(
+            group_id=group_key,
+            photos=[PhotoRef(path=p.workspace_path) for p in photos],
+        ))
+        for ls in assess_resp.scores:
+            p = by_path.get(ls.path)
+            if p:
+                p.local_score = ls.score
+                p.local_detail = ls.detail.model_dump() if ls.detail else None
+        self._photos.update_many(photos)
+
+        survivors = [s.path for s in assess_resp.survivors]
+        kept_paths: set[str] = set()
+        origin_by_path: dict[str, str] = {}
+        if survivors:
+            # 层②：大模型打分（缺 key/网络 → 502 上抛；此时层①已落库）。
+            score_resp = self._scoring.score(ScoreRequest(
+                group_id=group_key, photos=survivors, group_total=len(photos),
+            ))
+            for sc in score_resp.scores:
+                p = by_path.get(sc.path)
+                if p:
+                    p.llm_score = sc.score
+                    p.llm_reason = sc.reason
+                    p.llm_flaws = sc.flaws
+            for entry in score_resp.pk:  # 层②漏斗通过的即「通过」
+                kept_paths.add(entry.path)
+                origin_by_path[entry.path] = entry.origin.value
+
+        for p in photos:
+            if p.workspace_path in kept_paths:
+                p.selection = Selection.KEPT.value
+                p.origin = origin_by_path.get(p.workspace_path)
+            else:
+                p.selection = Selection.DISCARDED.value
+                p.origin = None
+        self._photos.update_many(photos)
+
+        group.status = GroupStatus.ASSESSED.value
+        self._groups.update(group)
+        return self.get_group_detail(project_id, group_key)
+
+    # ── 用户裁决 ──────────────────────────────────────────────────────────────
+
+    def update_selection(
+        self, project_id: int, group_key: str, changes: list[SelectionChange]
+    ) -> GroupDetailResponse:
+        """手动改去留 / 标记救回。"""
+        photos = self._photos.by_group(project_id, group_key)
+        by_id = {p.id: p for p in photos}
+        touched: list[ProjectPhoto] = []
+        for c in changes:
+            p = by_id.get(c.photo_id)
+            if not p:
+                continue
+            if c.selection is not None:
+                p.selection = c.selection.value
+            if c.rescued is not None:
+                p.rescued = c.rescued
+            touched.append(p)
+        if touched:
+            self._photos.update_many(touched)
+        return self.get_group_detail(project_id, group_key)
+
+    def confirm_group(self, project_id: int, group_key: str) -> GroupDetailResponse:
+        """确认本组（标识，可反复改回）。"""
+        group = self._require_group(project_id, group_key)
+        group.status = GroupStatus.CONFIRMED.value
+        self._groups.update(group)
+        return self.get_group_detail(project_id, group_key)
+
+    def confirm_all(self, project_id: int) -> ProjectDetailResponse:
+        """一键通过：未评测的组先评测（默认信任大模型），再把所有组置为已确认。"""
+        self._require_project(project_id)
+        for g in self._groups.by_project(project_id):
+            if g.status == GroupStatus.PENDING.value:
+                self.assess_group(project_id, g.group_key)  # 可能 503/502 上抛
+        for g in self._groups.by_project(project_id):
+            if g.status != GroupStatus.CONFIRMED.value:
+                g.status = GroupStatus.CONFIRMED.value
+                self._groups.update(g)
+        return self.get_detail(project_id)
+
+    # ── 完成 ────────────────────────────────────────────────────────────────
+
+    def complete(self, project_id: int) -> CompleteResponse:
+        """门禁=全组已确认；复制「通过」到目标目录 → 删 workspace → 标记完成。"""
+        project = self._require_project(project_id)
+        groups = self._groups.by_project(project_id)
+        if not groups or any(g.status != GroupStatus.CONFIRMED.value for g in groups):
+            raise HTTPException(status_code=400, detail="还有未确认的分组，无法完成")
+
+        kept = self._photos.kept_of(project_id)
+        self._workspace.copy_into([p.workspace_path for p in kept], project.target_dir)
+        self._workspace.remove_dir(project.workspace_dir)
+        project.status = ProjectStatus.COMPLETED.value
+        project.completed_at = datetime.now()
+        self._projects.update(project)
+        return CompleteResponse(output_dir=project.target_dir, kept_count=len(kept))
+
+    # ── 读取 ────────────────────────────────────────────────────────────────
+
+    def list_projects(self) -> list[ProjectView]:
+        return [ProjectView.model_validate(p) for p in self._projects.all()]
+
+    def get_detail(self, project_id: int) -> ProjectDetailResponse:
+        project = self._require_project(project_id)
+        photos = self._photos.by_project(project_id)
+        summaries = [
+            self._summarize(g, [p for p in photos if p.group_key == g.group_key])
+            for g in self._groups.by_project(project_id)
+        ]
+        return ProjectDetailResponse(project=ProjectView.model_validate(project), groups=summaries)
+
+    def get_group_detail(self, project_id: int, group_key: str) -> GroupDetailResponse:
+        group = self._require_group(project_id, group_key)
+        photos = self._photos.by_group(project_id, group_key)
+        return GroupDetailResponse(
+            project_id=project_id,
+            group=self._summarize(group, photos),
+            photos=[PhotoView.model_validate(p) for p in photos],
+            pk=self._pk.get_view(project_id, group_key),
+        )
+
+    # ── 内部工具 ──────────────────────────────────────────────────────────────
+
+    def _extract(self, path: str) -> tuple[datetime | None, str | None, str | None]:
+        """读单张的拍摄时间 + 拍摄地名（坐标反查）；失败返回错误串，不抛。"""
+        try:
+            img = self._open_for_exif(path)
+            t = imaging.read_capture_time(img)
+            gps = imaging.read_gps(img)
+            loc = self._geocode.reverse(*gps) if gps else None
+            return t, loc, None
+        except Exception as e:  # noqa: BLE001 —— 单张元数据失败上报、不中断
+            return None, None, f"{type(e).__name__}: {e}"
+
+    @staticmethod
+    def _open_for_exif(path: str) -> Image.Image:
+        """为读 EXIF 打开图：普通图懒加载只读头；RAW 走内嵌预览。"""
+        if Path(path).suffix.lower() in imaging.IMAGE_EXTS:
+            return Image.open(path)
+        return imaging.load_for_analysis(path)
+
+    @staticmethod
+    def _most_common(values: list[str]) -> str | None:
+        return Counter(values).most_common(1)[0][0] if values else None
+
+    @staticmethod
+    def _summarize(group: PhotoGroup, photos: list[ProjectPhoto]) -> GroupSummary:
+        return GroupSummary(
+            group_key=group.group_key, location=group.location,
+            time_start=group.time_start, time_end=group.time_end, status=group.status,
+            photo_count=len(photos),
+            kept_count=sum(1 for p in photos if p.selection == Selection.KEPT.value),
+        )
+
+    @staticmethod
+    def _validate_name(name: str) -> str:
+        name = (name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="项目名不能为空")
+        if any(sep in name for sep in ("/", "\\")) or name in (".", "..") or "\x00" in name:
+            raise HTTPException(status_code=400, detail="项目名不能包含路径分隔符")
+        return name
+
+    def _require_project(self, project_id: int) -> Project:
+        project = self._projects.get(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"项目不存在：{project_id}")
+        return project
+
+    def _require_group(self, project_id: int, group_key: str) -> PhotoGroup:
+        group = self._groups.get(project_id, group_key)
+        if not group:
+            raise HTTPException(status_code=404, detail=f"分组不存在：{group_key}")
+        return group

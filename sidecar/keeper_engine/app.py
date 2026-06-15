@@ -16,6 +16,7 @@ from .controller import (
     assess_controller,
     group_controller,
     health_controller,
+    project_controller,
     score_controller,
     thumbnail_controller,
 )
@@ -28,6 +29,8 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # 建全部 sqlite 表（模型状态 + 项目工作流），幂等。
+        container.database().create_all()
         # 不阻塞启动；启动后立刻可应答 /health。首次需下载则停在 awaiting_consent 等用户确认，
         # 否则后台预热（报 loading → ready）。
         container.readiness_service().boot()
@@ -51,6 +54,7 @@ def create_app() -> FastAPI:
         group_controller,
         assess_controller,
         score_controller,
+        project_controller,
     ):
         app.include_router(module.router)
 

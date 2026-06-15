@@ -10,18 +10,28 @@ from __future__ import annotations
 
 from dependency_injector import containers, providers
 
+from .client.geocode_client import GeocodeClient
 from .client.scorer import LocalDirectScorer
 from .client.vision_client import VisionClient
+from .config.database import Database
 from .config.settings import Settings
+from .mapper.geocode_cache_mapper import GeocodeCacheMapper
 from .mapper.model_module_mapper import ModelModuleMapper
+from .mapper.photo_group_mapper import PhotoGroupMapper
+from .mapper.pk_state_mapper import PkStateMapper
+from .mapper.project_mapper import ProjectMapper
+from .mapper.project_photo_mapper import ProjectPhotoMapper
 from .service.assess_service import AssessService
 from .service.funnel_service import FunnelService
 from .service.grouping_service import GroupingService
 from .service.params_service import ParamsService
+from .service.pk_service import PkService
 from .service.prescreen_service import PrescreenService
+from .service.project_service import ProjectService
 from .service.ranking_service import RankingService
 from .service.readiness_service import ReadinessService
 from .service.scoring_service import ScoringService
+from .service.workspace_service import WorkspaceService
 
 
 class Container(containers.DeclarativeContainer):
@@ -35,8 +45,16 @@ class Container(containers.DeclarativeContainer):
     vision_client = providers.Singleton(VisionClient, settings=settings)
     scorer = providers.Singleton(LocalDirectScorer, settings=settings)  # ← 切 CloudRelayScorer 只改这行
 
-    # ── 数据访问（模型状态持久化，sqlite）──
-    model_module_mapper = providers.Singleton(ModelModuleMapper, settings=settings)
+    # ── 数据访问（sqlite，统一共享 engine）──
+    database = providers.Singleton(Database, settings=settings)
+    model_module_mapper = providers.Singleton(ModelModuleMapper, database=database)
+    project_mapper = providers.Singleton(ProjectMapper, database=database)
+    project_photo_mapper = providers.Singleton(ProjectPhotoMapper, database=database)
+    photo_group_mapper = providers.Singleton(PhotoGroupMapper, database=database)
+    pk_state_mapper = providers.Singleton(PkStateMapper, database=database)
+    geocode_cache_mapper = providers.Singleton(GeocodeCacheMapper, database=database)
+
+    geocode_client = providers.Singleton(GeocodeClient, settings=settings, cache=geocode_cache_mapper)
 
     # ── 就绪态：全局共享，单例 ──
     readiness_service = providers.Singleton(
@@ -47,6 +65,7 @@ class Container(containers.DeclarativeContainer):
     funnel_service = providers.Factory(FunnelService)
     params_service = providers.Factory(ParamsService)
     ranking_service = providers.Factory(RankingService, funnel=funnel_service)
+    workspace_service = providers.Factory(WorkspaceService)
 
     # ── 业务编排服务 ──
     grouping_service = providers.Factory(
@@ -65,5 +84,23 @@ class Container(containers.DeclarativeContainer):
         scorer=scorer,
         params=params_service,
         ranking=ranking_service,
+        settings=settings,
+    )
+
+    # ── 项目工作流编排（持久化 + 文件操作 + 复用上面的引擎 service）──
+    pk_service = providers.Factory(
+        PkService, photo_mapper=project_photo_mapper, pk_mapper=pk_state_mapper
+    )
+    project_service = providers.Factory(
+        ProjectService,
+        project_mapper=project_mapper,
+        photo_mapper=project_photo_mapper,
+        group_mapper=photo_group_mapper,
+        grouping=grouping_service,
+        assess=assess_service,
+        scoring=scoring_service,
+        pk=pk_service,
+        workspace=workspace_service,
+        geocode=geocode_client,
         settings=settings,
     )
