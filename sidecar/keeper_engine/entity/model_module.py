@@ -1,0 +1,21 @@
+"""模型模块的下载/加载状态实体——持久化到本地 sqlite，供前端展示与诊断。"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlmodel import Field, SQLModel
+
+
+class ModelModule(SQLModel, table=True):
+    """一个模型模块的下载/加载状态。
+
+    name 为模块标识（如 dino / face_group / topiq …）；status 取
+    pending（待加载）/ downloading（下载中）/ ready（就绪）/ error（失败）。
+    """
+
+    name: str = Field(primary_key=True)
+    status: str = Field(default="pending")
+    detail: str = Field(default="")
+    downloaded_bytes: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.now)

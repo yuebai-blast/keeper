@@ -13,6 +13,7 @@ from dependency_injector import containers, providers
 from .client.scorer import LocalDirectScorer
 from .client.vision_client import VisionClient
 from .config.settings import Settings
+from .mapper.model_module_mapper import ModelModuleMapper
 from .service.assess_service import AssessService
 from .service.funnel_service import FunnelService
 from .service.grouping_service import GroupingService
@@ -34,8 +35,13 @@ class Container(containers.DeclarativeContainer):
     vision_client = providers.Singleton(VisionClient, settings=settings)
     scorer = providers.Singleton(LocalDirectScorer, settings=settings)  # ← 切 CloudRelayScorer 只改这行
 
+    # ── 数据访问（模型状态持久化，sqlite）──
+    model_module_mapper = providers.Singleton(ModelModuleMapper, settings=settings)
+
     # ── 就绪态：全局共享，单例 ──
-    readiness_service = providers.Singleton(ReadinessService, vision=vision_client, settings=settings)
+    readiness_service = providers.Singleton(
+        ReadinessService, vision=vision_client, settings=settings, mapper=model_module_mapper
+    )
 
     # ── 无状态领域服务 ──
     funnel_service = providers.Factory(FunnelService)

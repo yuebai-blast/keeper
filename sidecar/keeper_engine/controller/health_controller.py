@@ -29,3 +29,11 @@ def retry_warmup(readiness: ReadinessService = Depends(Provide[Container.readine
     """重新预热模型——仅在「可重试的 error」时生效（下载失败重试）；返回最新就绪态。"""
     readiness.retry()
     return {"version": __version__, **readiness.snapshot()}
+
+
+@router.post("/warmup/reload")
+@inject
+def reload_models(readiness: ReadinessService = Depends(Provide[Container.readiness_service])) -> dict:
+    """强制重新加载模型（运行时模型不可用时的修复入口）；返回最新就绪态。"""
+    readiness.reload()
+    return {"version": __version__, **readiness.snapshot()}
