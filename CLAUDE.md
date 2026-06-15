@@ -67,6 +67,25 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 容错约定：批量端点对**单张读图失败记入 `errors` 不中断**；本地模型整体不可用（预热失败/缺依赖）才 503，大模型不可用才 502——一律显式报错，不静默降级。
 
+> 上面 5 个是**无状态推理端点**（直收路径、即算即返）。下面是**项目工作流端点**——状态持久化在 sidecar（sqlite），是桌面端选片流程的主接口。
+
+### 项目工作流端点（`controller/project_controller.py`，前缀 `/projects`）
+
+选片以**项目**为单位（名字唯一，输出到 `~/Pictures/Keeper/{项目名}`），每步持久化、可随时退出恢复。
+
+| 端点 | 作用 | 门禁 |
+| :-- | :-- | :-- |
+| `POST /projects/preview` | 扫描源文件夹：数量 / 拍摄时间范围 / 拍摄地（不建项目） | — |
+| `POST /projects` | 建项目 + 复制副本到 `~/.keeper/workspace/{名}`（不动源） | 名重复→409 |
+| `GET /projects` · `GET /projects/{id}` | 项目列表 / 项目详情（含各组摘要） | — |
+| `POST /projects/{id}/group` | 分组并落库（写 group_key + 建组、聚合拍摄地/时间） | 需 `ready`→503 |
+| `GET /projects/{id}/groups/{gk}` | 组详情：照片 + 两层评分 + 去留 + PK 进度 | — |
+| `POST /projects/{id}/groups/{gk}/assess` | 层①+层②评测、初始化去留；已评测则原样返回 | `ready`→503，层②→502 |
+| `POST …/{gk}/selection` · `…/{gk}/confirm` | 改去留/救回标记 · 确认本组（标识，可改回） | — |
+| `POST …/{gk}/pk/start` · `…/pk/choose` · `…/pk/undo` | PK 擂台：起/选（四结局）/撤销，每步落库 | — |
+| `POST /projects/{id}/confirm-all` | 一键通过：未评测组先评测，再全部确认 | `ready`→503，层②→502 |
+| `POST /projects/{id}/complete` | 复制「通过」到目标目录 + 删 workspace + 标记完成 | 全组确认才放行，否则 400 |
+
 ## 分层与漏斗管线模块地图（最关键逻辑）
 
 sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/container.py`）：
@@ -83,10 +102,13 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - `service/prescreen_service.py` — 层①合成分（TOPIQ + CLIP-IQA+ + 主体锐度，再按闭眼/脱焦/曝光等扣分）；阈值集中在文件顶部，**在真实照片上标定**。
 - `service/ranking_service.py` + `converter/score_converter.py` — 层②出口：套漏斗 + 给候选标注 passed/quota_fill 来源，组装 PK。
 - `service/{assess,scoring,readiness}_service.py` — 三个端点编排：层①评分收口 / 层②打分组装 / 模型预热与就绪态。
+- `service/project_service.py` — **项目工作流编排核心**：预览/建项目/分组/评测/裁决/确认/完成，复用上面所有引擎 service，把结果落库（持久化权威）。`service/pk_service.py` — PK 擂台状态机（四结局，状态存 `PkState`，每步可恢复），终止时把去留写回 `ProjectPhoto.selection`。`service/workspace_service.py` — workspace 文件操作（扫描/复制副本/归档/清理，重名避让），**只动副本与输出目录，不碰源**。
+- 持久化层（sqlite）：`config/database.py` 共享 engine（全部 mapper 复用，`create_all` 在 app 启动时建表）；`entity/*` 实体（`Project`/`ProjectPhoto`/`PhotoGroup`/`PkState`/`GeocodeCache`/`ModelModule`）+ `mapper/*` 数据访问。层②/层①评分明细以 JSON 列就地存在 `ProjectPhoto`。
+- `client/geocode_client.py` — 拍摄地在线反查地名（只发 GPS 坐标、不发照片，默认 OSM Nominatim，结果缓存到 `GeocodeCache`）；GPS 读取在 `util/imaging.read_gps`。
 - `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存固定到 `~/.keeper/models`。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
 - `client/scorer.py` — `Scorer` 协议 + `LocalDirectScorer`（直连火山 Ark），提示词在 `client/prompts/layer2_score.md`（不改代码即可迭代）。**容器里 `scorer` 一行绑定即可切 `CloudRelayScorer`，业务流程不动。**
 
-桌面端：文件系统访问（导入扫图、归档写回）**只在 Rust 壳**（`src-tauri/src/lib.rs` 的 `import_photos` / `archive_decisions` 命令），前端碰不到 FS；前端状态在 Pinia stores（`engine` 连接态、`library` 库/分组/评分/裁决/归档）。
+桌面端：扫描、读 EXIF、复制副本、归档、删除等**文件操作已下沉到 sidecar**（Python，统一管 `~/.keeper`）。Rust 壳（`src-tauri/src/lib.rs`）只保留需要原生 GUI 的命令：`pick_folder`（目录选择对话框）、`open_path`（打开输出目录）、`exit_app`。前端用 **vue-router** 多页流程（`pages/*`：项目主页 / 新建 / 分组列表 / 组详情 / 完成），状态在 Pinia（`engine` 连接态、`projects` 项目/组/PK——权威在 sidecar，前端每步操作后用服务端返回刷新）；`api.ts` 镜像上面两类端点。
 
 ## 环境变量速查
 
@@ -97,7 +119,9 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 | 变量 | 作用 |
 | :-- | :-- |
 | `VITE_SIDECAR_URL` | 前端覆盖 sidecar 基址（默认 `http://127.0.0.1:8761`） |
-| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`thumbnails/`、`keeper.db`、`ark_key` |
+| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`thumbnails/`、`workspace/`（项目副本）、`keeper.db`、`ark_key` |
+| `KEEPER_OUTPUT_ROOT` | 选片完成输出根（默认 `~/Pictures/Keeper`），最终输出到 `{此}/{项目名}` |
+| `KEEPER_GEOCODE_ENABLED` / `KEEPER_GEOCODE_URL` | 拍摄地反查开关 / 服务地址（默认 OSM Nominatim，只发坐标） |
 | `KEEPER_DEVICE` | `cpu`（默认最稳）/ `cuda`；pyiqa 在 MPS 易炸，固定不走 MPS |
 | `KEEPER_DINO_MODEL` / `KEEPER_FACE_PACK` | 切分组/人脸模型（默认 `facebook/dinov2-small` / `buffalo_l`） |
 | `ARK_API_KEY` | 大模型 key；也可写入 `~/.keeper/ark_key`（0600），绝不入库 |
@@ -110,17 +134,20 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - **OpenCV 三包冲突**：`sidecar/pyproject.toml` 的 `[tool.uv] override-dependencies` 用「marker 永假」把 `opencv-python(-headless)` 从依赖树剔除，保住 `opencv-contrib-python` 的 `cv2.saliency`。别把它们加回依赖。
 - **不静默降级**：本地推理依赖缺失或模型加载失败立刻抛异常，不悄悄退化。
 - **API key 本地管理**：大模型 key 存在 `~/.keeper/ark_key`（0600 权限），可由 UI 录入或环境变量注入，绝不入库。
-- **照片不出本地**：任何把原图发往网络的改动都违反核心原则；只有低清预览允许上传给打分服务。
+- **照片不出本地**：任何把原图发往网络的改动都违反核心原则；只有低清预览允许上传给打分服务，以及拍摄地反查只发 GPS 坐标。复制副本/归档/删除只动 `~/.keeper/workspace` 与输出目录，绝不写用户源文件夹。
 - **中文书写**：CLAUDE.md、README、`docs/`、代码注释、Git 提交信息一律用简体中文；代码标识符/API 名保持英文。
 
 ## 进度与尚未落地（按计划推进）
 
-已落地：分组、层①评分、层②大模型打分、PK 候选组装、缩略图缓存、桌面端 A/B 擂台终选（`src/components/Arena.vue`）与归档写回（复制/移动/仅清单）。
+已落地：分组、层①评分、层②大模型打分、PK 候选组装、缩略图缓存。
+
+**项目化选片工作流（sqlite 持久化）已落地**：以项目为单位，源图复制副本到 `~/.keeper/workspace/{名}`（保护原文件）→ 分组 → 逐组评测（层①+层②，自动分通过/未通过）→ 用户裁决（救回 + A/B 擂台 PK 四结局 + 手动改判 + 确认）→ 完成时把「通过」复制到 `~/Pictures/Keeper/{名}` 并清理 workspace。全程每步落库，可随时退出/恢复（见 `service/project_service.py`、`service/pk_service.py`、前端 `pages/*` + `stores/projects.ts`）。拍摄地经 GPS+在线反查展示（尽力而为）。
 
 分组已接入人脸身份（ArcFace 人脸集合相似度）拆开「同场景不同人」，多人合影按「是不是同一拨人」区分。
 
 尚未落地：
-- 服务端编排端点（如 `/assemble`；`RankingService.assemble_pk_set` 已可复用）。
 - `CloudRelayScorer`（商业版云端中转，按 `Scorer` 协议新增实现 + 切配置即可，业务流程不改）。
+- 拍摄地离线反查（当前在线 Nominatim，断网/失败则不展示，不阻断流程）。
+- 大批量导入时的复制/分组进度条（当前同步，量大时前端等待）。
 - 各阈值/权重旋钮仍需在真实照片集上标定。
 - **商用授权**：`buffalo_l`（含分组用的 ArcFace 识别 + 层①的检测/关键点）仅限非商用研究，商用前必须替换或授权。
