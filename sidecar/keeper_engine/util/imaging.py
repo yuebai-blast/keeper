@@ -184,3 +184,36 @@ def read_capture_time(img: Image.Image) -> datetime | None:
         return dt
     except Exception:
         return None
+
+
+def read_gps(img: Image.Image) -> tuple[float, float] | None:
+    """从 EXIF 读拍摄地经纬度（十进制度，WGS-84）。读不到/无 GPS 返回 None。
+
+    用于「拍摄地」展示（坐标再交由在线地理编码反查地名）。度分秒按 ref（N/S/E/W）定正负。
+    照片本身永不出本地，只有反查时把坐标发给地理编码服务（见 client.geocode_client）。
+    """
+    try:
+        gps = img.getexif().get_ifd(0x8825)  # GPS IFD
+        if not gps:
+            return None
+        lat = _dms_to_deg(gps.get(2), gps.get(1))   # GPSLatitude / GPSLatitudeRef
+        lon = _dms_to_deg(gps.get(4), gps.get(3))   # GPSLongitude / GPSLongitudeRef
+        if lat is None or lon is None:
+            return None
+        return lat, lon
+    except Exception:
+        return None
+
+
+def _dms_to_deg(dms, ref) -> float | None:
+    """(度,分,秒) + 参考方向 → 带符号十进制度。任一缺失返回 None。"""
+    if not dms or ref is None:
+        return None
+    try:
+        d, m, s = (float(x) for x in dms)
+    except (TypeError, ValueError):
+        return None
+    deg = d + m / 60.0 + s / 3600.0
+    if str(ref).strip().upper() in ("S", "W"):
+        deg = -deg
+    return deg

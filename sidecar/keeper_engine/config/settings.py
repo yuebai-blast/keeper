@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     ark_model: str = ""
     ark_concurrency: int = 4
 
+    # 选片项目最终输出根目录（固定前缀，输出到 {output_root}/{项目名}）；不在 home 下，单独可配
+    output_root: Path = Path.home() / "Pictures" / "Keeper"
+
+    # 拍摄地在线反查地名（只发坐标、不发照片）；默认 OpenStreetMap Nominatim（无 key、WGS-84）
+    geocode_enabled: bool = True
+    geocode_url: str = "https://nominatim.openstreetmap.org/reverse"
+    geocode_user_agent: str = "Keeper/0.1 (https://github.com/yuebai-blast)"
+    geocode_lang: str = "zh-CN"
+
     @field_validator("device")
     @classmethod
     def _normalize_device(cls, v: str) -> str:
@@ -60,6 +69,11 @@ class Settings(BaseSettings):
     @property
     def thumbs_dir(self) -> Path:
         return self.home / "thumbnails"
+
+    @computed_field
+    @property
+    def workspace_dir(self) -> Path:
+        return self.home / "workspace"
 
     @computed_field
     @property
