@@ -1,11 +1,14 @@
 """模型模块状态 mapper 的测试——临时 sqlite，验证 upsert/all。"""
 
+from keeper_engine.config.database import Database
 from keeper_engine.config.settings import Settings
 from keeper_engine.mapper.model_module_mapper import ModelModuleMapper
 
 
 def _mapper(tmp_path) -> ModelModuleMapper:
-    return ModelModuleMapper(Settings(home=tmp_path))
+    db = Database(Settings(home=tmp_path))
+    db.create_all()
+    return ModelModuleMapper(db)
 
 
 def test_upsert_inserts_then_updates(tmp_path):

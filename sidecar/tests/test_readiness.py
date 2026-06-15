@@ -1,6 +1,7 @@
 """就绪态加载编排的测试——用桩 VisionClient 替代真实模型，验证进度/依赖区分/重试/首次探测。"""
 
 from keeper_engine.client.vision_client import MODULE_EXPECTED_MB
+from keeper_engine.config.database import Database
 from keeper_engine.config.settings import Settings
 from keeper_engine.exception.errors import DependencyMissing
 from keeper_engine.mapper.model_module_mapper import ModelModuleMapper
@@ -30,7 +31,9 @@ class FakeVision:
 
 def _svc(tmp_path, fail=None, fail_at=0) -> ReadinessService:
     settings = Settings(home=tmp_path)
-    return ReadinessService(FakeVision(fail, fail_at), settings, ModelModuleMapper(settings))
+    db = Database(settings)
+    db.create_all()
+    return ReadinessService(FakeVision(fail, fail_at), settings, ModelModuleMapper(db))
 
 
 def test_warmup_success_reports_progress(tmp_path):
