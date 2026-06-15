@@ -22,7 +22,7 @@ monorepo，两个组件各自启动：
 | 桌面应用 | `apps/desktop/` | Tauri 2.x（Rust 壳）+ Vue3 + TS + Vite + Pinia | 文件 IO / 读 RAW / UI / A/B 擂台 / 本地存储 / 调度 sidecar |
 | 推理服务 | `sidecar/` | Python 3.11 + FastAPI | 分组 + 本地评分（层①）+ 调大模型打分（层②） |
 
-数据流、Scorer 可替换设计、未来云端中转的插入点，详见 [docs/architecture.md](docs/architecture.md)。
+数据流、Scorer 可替换设计、未来云端中转的插入点，详见 [docs/architecture.md](docs/architecture.md)。工程实现细节（分层、DI、就绪态、各部分算法、API 契约）详见 [docs/tech-overview.md](docs/tech-overview.md)。
 
 ### 本地推理为什么是独立的 Python sidecar
 

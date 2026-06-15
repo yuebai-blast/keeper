@@ -50,8 +50,8 @@
 
 ```python
 class Scorer(Protocol):
-    def score(self, previews: list[Preview]) -> list[Score]:
-        """对一组候选预览打 0–100 分，返回分数 + 可解释理由。"""
+    def score(self, previews: list[Preview], model: str) -> list[Score]:
+        """对一组候选预览用指定大模型打 0–100 分，返回分数 + 可解释理由。"""
 
 class LocalDirectScorer:   # 本版：sidecar 直连大模型 API
     ...
@@ -60,7 +60,7 @@ class CloudRelayScorer:    # 未来商业版：调自建云端中转层（鉴权
     ...
 ```
 
-业务流程只依赖 `Scorer` 协议。商业化时新增 `CloudRelayScorer` 实现并切换配置即可，**编排逻辑零改动**。
+业务流程只依赖 `Scorer` 协议。商业化时新增 `CloudRelayScorer` 实现，在 DI 容器（`sidecar/keeper_engine/container.py`）里换一行绑定即可，**编排逻辑零改动**。
 
 ## 数据流：什么离开本地，什么不离开
 
