@@ -38,7 +38,7 @@ def create_app() -> FastAPI:
     # 桌面端 Tauri webview 经浏览器上下文跨源调用本服务，需放行本地来源。
     # 服务只绑 127.0.0.1（仅本机可达），故放行 localhost / tauri 来源是安全的。
     app.add_middleware(
-        CORSMiddleware,
+        CORSMiddleware,  # type: ignore[arg-type]  # Starlette ParamSpec 签名导致 PyCharm 误报，运行无碍
         allow_origin_regex=settings.cors_origin_regex,
         allow_methods=["*"],
         allow_headers=["*"],
