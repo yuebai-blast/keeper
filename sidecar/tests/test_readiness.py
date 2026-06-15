@@ -87,3 +87,36 @@ def test_first_run_detection(tmp_path):
     models.mkdir(parents=True, exist_ok=True)
     (models / "model.onnx").write_bytes(b"x")
     assert _svc(tmp_path).first_run is False           # 有权重 → 非首次
+
+
+def test_snapshot_exposes_expected_total_mb(tmp_path):
+    snap = _svc(tmp_path).snapshot()
+    assert snap["expected_total_mb"] == sum(MODULE_EXPECTED_MB.values())
+
+
+def test_boot_first_run_awaits_consent(tmp_path, monkeypatch):
+    svc = _svc(tmp_path)                                # 空目录 → first_run
+    warmed = []
+    monkeypatch.setattr(svc, "start_warmup", lambda: warmed.append(True))
+    svc.boot()
+    assert svc.status == "awaiting_consent" and warmed == []  # 首次不自动下载，等确认
+
+
+def test_consent_starts_warmup_only_when_awaiting(tmp_path, monkeypatch):
+    svc = _svc(tmp_path)
+    monkeypatch.setattr(svc, "start_warmup", lambda: None)
+    assert svc.consent() is False                      # 非 awaiting_consent 态忽略
+    svc.boot()                                          # → awaiting_consent
+    assert svc.consent() is True and svc.status == "loading"
+    assert svc.consent() is False                      # 已开始，不重复触发
+
+
+def test_boot_non_first_run_warms_directly(tmp_path, monkeypatch):
+    models = tmp_path / "models"
+    models.mkdir(parents=True, exist_ok=True)
+    (models / "model.onnx").write_bytes(b"x")           # 有权重 → 非首次
+    svc = _svc(tmp_path)
+    warmed = []
+    monkeypatch.setattr(svc, "start_warmup", lambda: warmed.append(True))
+    svc.boot()
+    assert warmed == [True] and svc.status == "loading"

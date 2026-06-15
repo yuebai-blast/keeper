@@ -23,6 +23,14 @@ def health(readiness: ReadinessService = Depends(Provide[Container.readiness_ser
     return {"version": __version__, **readiness.snapshot()}
 
 
+@router.post("/warmup/consent")
+@inject
+def consent_warmup(readiness: ReadinessService = Depends(Provide[Container.readiness_service])) -> dict:
+    """用户同意首次下载模型——仅在 awaiting_consent 时生效，触发下载预热；返回最新就绪态。"""
+    readiness.consent()
+    return {"version": __version__, **readiness.snapshot()}
+
+
 @router.post("/warmup/retry")
 @inject
 def retry_warmup(readiness: ReadinessService = Depends(Provide[Container.readiness_service])) -> dict:

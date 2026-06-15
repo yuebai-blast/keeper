@@ -1,15 +1,20 @@
 <script setup lang="ts">
 // 启动首屏：后端加载本地模型期间显示进度。
+//  - 首次启动（需联网下载模型）→ 先弹窗告知预估体量，用户同意才开下、不同意则退出。
 //  - 普通加载完成 → 短暂展示「就位」后自动进入应用。
-//  - 首次启动（需联网下载模型）→ 完成后出现按钮，由用户点击进入。
+//  - 首次下载完成 → 出现按钮，由用户点击进入。
 //  - 下载失败 → 可重试；依赖缺失（致命）→ 不可重试，提示修复。
+import { invoke } from "@tauri-apps/api/core";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useEngineStore } from "../stores/engine";
 
 const engine = useEngineStore();
 const emit = defineEmits<{ enter: [] }>();
 
-type View = "connecting" | "offline" | "loading" | "ready" | "retry" | "fatal";
+type View = "connecting" | "offline" | "consent" | "loading" | "ready" | "retry" | "fatal";
+
+// 用户一旦同意就不再回到确认弹窗（避免同意瞬间仍有在途轮询拿到 awaiting_consent 而回闪）
+const consented = ref(false);
 
 const view = computed<View>(() => {
   if (engine.phase === "offline") return "offline";
@@ -17,8 +22,20 @@ const view = computed<View>(() => {
   const s = engine.health?.status;
   if (s === "ready") return "ready";
   if (s === "error") return engine.canRetry ? "retry" : "fatal";
+  if (s === "awaiting_consent" && !consented.value) return "consent";
   return "loading";
 });
+
+const expectedGb = computed(() => ((engine.health?.expected_total_mb ?? 0) / 1024).toFixed(1));
+
+function onConsent() {
+  consented.value = true;
+  void engine.consent();
+}
+function onDecline() {
+  // 不同意首次下载 → 退出应用（无模型无法工作）
+  void invoke("exit_app");
+}
 
 const progress = computed(
   () => engine.health?.progress ?? { current: 0, total: 0, step: "", downloaded_mb: 0, speed_mbps: 0, percent: 0 },
@@ -75,6 +92,22 @@ onUnmounted(() => window.clearTimeout(enterTimer));
           <p class="line warn">推理服务尚未启动</p>
           <p class="hint">请先在终端运行 <code>mise run sidecar</code> 启动本地推理服务</p>
           <button class="btn" @click="engine.refresh()">重新连接</button>
+        </div>
+
+        <!-- 首次下载确认 -->
+        <div v-else-if="view === 'consent'" key="consent" class="stage">
+          <p class="banner">
+            首次启动 · 需要为你下载本地 AI 模型<em>仅此一次，下载后完全离线运行，照片不出本地</em>
+          </p>
+          <div class="consent-size">
+            <span class="num">约 {{ expectedGb }} GB</span>
+            <span class="unit">预估下载体量</span>
+          </div>
+          <p class="hint">模型保存在 <code>~/.keeper/models</code>，请确保网络通畅与磁盘空间充足。</p>
+          <div class="consent-actions">
+            <button class="btn" @click="onDecline">不同意 · 退出</button>
+            <button class="btn btn--primary" @click="onConsent">同意并开始下载</button>
+          </div>
         </div>
 
         <!-- 加载 / 下载中 -->
@@ -235,6 +268,34 @@ onUnmounted(() => window.clearTimeout(enterTimer));
   font-style: normal;
   font-size: 12px;
   color: var(--ink-faint);
+}
+
+/* 首次下载确认 */
+.consent-size {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 0;
+}
+.consent-size .num {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 400;
+  color: var(--amber-bright);
+  letter-spacing: 0.01em;
+}
+.consent-size .unit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.consent-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
 }
 
 /* 进度计 */

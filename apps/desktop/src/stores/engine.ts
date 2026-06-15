@@ -1,6 +1,6 @@
 // 引擎（sidecar）连接状态的 Pinia store。
 import { defineStore } from "pinia";
-import { ApiError, getHealth, reloadModels, retryWarmup, type Health } from "../api";
+import { ApiError, consentWarmup, getHealth, reloadModels, retryWarmup, type Health } from "../api";
 
 interface EngineState {
   health: Health | null;
@@ -23,6 +23,8 @@ export const useEngineStore = defineStore("engine", {
     ready: (s): boolean => s.phase === "online" && s.health?.status === "ready",
     // 是否首次下载模型（首次需联网，就绪后由用户点按钮进入；非首次自动进入）
     firstRun: (s): boolean => s.health?.first_run === true,
+    // 首次下载等待用户确认（弹窗告知体量，同意后才开下）
+    awaitingConsent: (s): boolean => s.health?.status === "awaiting_consent",
     // 加载失败且可重试（下载失败等）；依赖缺失不可重试
     canRetry: (s): boolean => s.health?.status === "error" && s.health?.retryable === true,
   },
@@ -35,6 +37,18 @@ export const useEngineStore = defineStore("engine", {
       } catch (e) {
         this.phase = "offline";
         this.health = null;
+        this.error = e instanceof Error ? e.message : String(e);
+      }
+    },
+    // 同意首次下载：触发后端开始下载，立刻把本地状态切到 loading（避免确认弹窗回闪），再拉就绪态。
+    async consent() {
+      if (this.health) this.health = { ...this.health, status: "loading" };
+      try {
+        this.health = await consentWarmup();
+        this.phase = "online";
+        this.error = "";
+      } catch (e) {
+        this.phase = "offline";
         this.error = e instanceof Error ? e.message : String(e);
       }
     },

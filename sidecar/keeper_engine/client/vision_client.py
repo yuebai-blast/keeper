@@ -38,14 +38,16 @@ GROUPING_FACE_MODULES = ("detection", "recognition")
 GROUPING_FACE_DET_MIN = 0.5     # 人脸最低检测置信度（低于此当背景误检，不取其身份）
 GROUPING_FACE_MIN_AREA = 0.005  # 人脸面积占比下限（过滤背景路人小脸，只留画面里的主要人物）
 
-# 各模块首次下载的粗略大小（MB），仅用于估算整体下载百分比（非精确）。
+# 各模块首次下载占用的磁盘大小（MB），用于估算整体下载百分比 + 首次下载前告知用户体量。
+# 数值按真实完整下载后的 ~/.keeper/models 实测标定（du 各子树），总量约 1.6 GB；
+# 注意 InsightFace 会同时留下 buffalo_l.zip 与解包后的权重（约各占一半），故 face_group 偏大。
 MODULE_EXPECTED_MB = {
-    "dino": 90,
-    "face_group": 300,  # buffalo_l 整包
-    "face_detect": 0,   # 与 face_group 复用同一 buffalo_l 包，不重复计
-    "topiq": 100,
-    "topiq_face": 50,
-    "clipiqa": 350,     # 含 CLIP backbone
+    "dino": 90,          # facebook/dinov2-small 权重
+    "face_group": 615,   # buffalo_l：下载的 .zip + 解包后的 onnx 权重一并占盘
+    "face_detect": 0,    # 与 face_group 复用同一 buffalo_l 包，不重复计
+    "topiq": 290,        # TOPIQ-nr：timm resnet50 backbone + koniq 权重
+    "topiq_face": 385,   # TOPIQ-nr-face：人脸质量权重 + 人脸检测/解析预处理权重
+    "clipiqa": 256,      # CLIP-IQA+：CLIP RN50 backbone + 学到的提示词
 }
 
 

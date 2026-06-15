@@ -24,10 +24,17 @@ logger = logging.getLogger("keeper_engine.service.readiness")
 _WEIGHT_SUFFIXES = (".onnx", ".safetensors", ".bin", ".pth", ".pt")
 _STALL_LIMIT_SECONDS = 90.0  # 下载零增长超过此值视为卡死（载入模型不下载的耗时一般远小于此）
 _EXPECTED_TOTAL_BYTES = sum(MODULE_EXPECTED_MB.values()) * 1024 * 1024
+_EXPECTED_TOTAL_MB = sum(MODULE_EXPECTED_MB.values())
 
 
 class ReadinessService:
-    """模型就绪状态机：loading / ready / error，带进度、下载速度、可重试与首次下载标记。DI 单例。"""
+    """模型就绪状态机：awaiting_consent / loading / ready / error。
+
+    带进度、下载速度、可重试与首次下载标记。DI 单例。
+
+    首次启动（模型缓存为空、需联网下载）时**不**自动开下，而是先停在 awaiting_consent，
+    等前端弹窗告知体量、用户同意后调 consent() 再开始下载——避免在用户不知情时占用大量带宽/磁盘。
+    """
 
     def __init__(self, vision: VisionClient, settings: Settings, mapper: ModelModuleMapper) -> None:
         self._vision = vision
@@ -50,6 +57,23 @@ class ReadinessService:
             return True
         return not any(any(root.rglob(f"*{suffix}")) for suffix in _WEIGHT_SUFFIXES)
 
+    def boot(self) -> None:
+        """启动入口（app lifespan 调用）：首次需下载则等用户同意，否则直接预热。"""
+        if self.first_run:
+            self.status = "awaiting_consent"
+            logger.info("readiness: 首次启动，预估需下载约 %d MB，等待用户确认", _EXPECTED_TOTAL_MB)
+        else:
+            self.start_warmup()
+
+    def consent(self) -> bool:
+        """用户同意首次下载——仅在 awaiting_consent 时生效，转 loading 并开始预热。返回是否已触发。"""
+        with self._lock:
+            if self.status != "awaiting_consent":
+                return False
+            self.status = "loading"
+            self.start_warmup()
+            return True
+
     def snapshot(self) -> dict:
         mon = self._monitor
         downloaded = mon.downloaded_bytes if mon else 0
@@ -65,6 +89,7 @@ class ReadinessService:
             "detail": self.detail,
             "retryable": self.retryable,
             "first_run": self.first_run,
+            "expected_total_mb": _EXPECTED_TOTAL_MB,
             "progress": {
                 "current": self.current,
                 "total": self.total,

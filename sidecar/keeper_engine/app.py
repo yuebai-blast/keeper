@@ -28,8 +28,9 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # 后台预热，不阻塞启动；启动后立刻可应答 /health（报 loading），就绪后转 ready。
-        container.readiness_service().start_warmup()
+        # 不阻塞启动；启动后立刻可应答 /health。首次需下载则停在 awaiting_consent 等用户确认，
+        # 否则后台预热（报 loading → ready）。
+        container.readiness_service().boot()
         yield
 
     app = FastAPI(title="Keeper Engine", version=__version__, lifespan=lifespan)
