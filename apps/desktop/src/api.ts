@@ -159,3 +159,154 @@ export function assessGroup(groupId: string, photos: string[]): Promise<AssessRe
     photos: photos.map((path) => ({ path })),
   });
 }
+
+// ── 项目工作流（持久化在 sidecar，与 controller/project_controller 对齐）──────────
+
+export type ProjectStatus = "grouping" | "selecting" | "completed" | string;
+export type GroupStatus = "pending" | "assessed" | "confirmed" | string;
+export type Selection = "kept" | "discarded";
+export type PkOutcome = "pick_left" | "pick_right" | "keep_both" | "drop_both";
+
+/** 源文件夹预览：数量、拍摄时间范围、拍摄地（尽力而为，可空）。 */
+export interface ProjectPreview {
+  count: number;
+  time_start: string | null;
+  time_end: string | null;
+  location: string | null;
+  errors: PhotoError[];
+}
+
+/** 项目视图。 */
+export interface ProjectView {
+  id: number;
+  name: string;
+  source_folder: string;
+  workspace_dir: string;
+  target_dir: string;
+  status: ProjectStatus;
+  photo_count: number;
+  time_start: string | null;
+  time_end: string | null;
+  location: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+/** 分组列表里的一组摘要。 */
+export interface GroupSummary {
+  group_key: string;
+  location: string | null;
+  time_start: string | null;
+  time_end: string | null;
+  status: GroupStatus;
+  photo_count: number;
+  kept_count: number;
+}
+
+/** 组详情/PK 里的一张照片完整信息（层①必有，层②有则展示）。 */
+export interface PhotoView {
+  id: number;
+  workspace_path: string;
+  original_path: string;
+  filename: string;
+  capture_time: string | null;
+  location: string | null;
+  group_key: string | null;
+  local_score: number | null;
+  local_detail: ScoreDetail | null;
+  llm_score: number | null;
+  llm_reason: string;
+  llm_flaws: string;
+  origin: "passed" | "quota_fill" | null;
+  selection: Selection | null;
+  rescued: boolean;
+}
+
+/** PK 进度视图。current 为当前一对的 workspace 路径。 */
+export interface PkView {
+  current: string[] | null;
+  pool_remaining: number;
+  kept_aside: string[];
+  done: boolean;
+  can_undo: boolean;
+}
+
+export interface ProjectDetail {
+  project: ProjectView;
+  groups: GroupSummary[];
+}
+
+export interface GroupDetail {
+  project_id: number;
+  group: GroupSummary;
+  photos: PhotoView[];
+  pk: PkView | null;
+  errors: PhotoError[];
+}
+
+export interface CompleteResult {
+  output_dir: string;
+  kept_count: number;
+}
+
+export interface SelectionChange {
+  photo_id: number;
+  selection?: Selection | null;
+  rescued?: boolean | null;
+}
+
+const enc = encodeURIComponent;
+
+/** 预览源文件夹（不建项目）。 */
+export const previewFolder = (folder: string) =>
+  post<ProjectPreview>("/projects/preview", { folder });
+
+/** 新建项目（校验名唯一 → 复制副本到 workspace）。 */
+export const createProject = (name: string, source_folder: string) =>
+  post<ProjectView>("/projects", { name, source_folder });
+
+/** 项目列表（含状态）。 */
+export const listProjects = () => get<ProjectView[]>("/projects");
+
+/** 项目详情（项目 + 各组摘要）。 */
+export const getProject = (id: number) => get<ProjectDetail>(`/projects/${id}`);
+
+/** 对项目跑分组并持久化（需模型就绪）。 */
+export const groupProject = (id: number) =>
+  post<ProjectDetail>(`/projects/${id}/group`, {});
+
+/** 组详情（照片 + 评分 + 去留 + PK 进度）。 */
+export const getGroup = (id: number, gk: string) =>
+  get<GroupDetail>(`/projects/${id}/groups/${enc(gk)}`);
+
+/** 对一组跑层①+层②评测并持久化（需就绪；层②可能 502）。 */
+export const assessProjectGroup = (id: number, gk: string) =>
+  post<GroupDetail>(`/projects/${id}/groups/${enc(gk)}/assess`, {});
+
+/** 批量更新组内照片去留 / 救回标记。 */
+export const updateSelection = (id: number, gk: string, changes: SelectionChange[]) =>
+  post<GroupDetail>(`/projects/${id}/groups/${enc(gk)}/selection`, { changes });
+
+/** 确认本组（标识，可反复改回）。 */
+export const confirmGroup = (id: number, gk: string) =>
+  post<GroupDetail>(`/projects/${id}/groups/${enc(gk)}/confirm`, {});
+
+/** 一键通过：未评测的组先评测，再全部置为已确认。 */
+export const confirmAll = (id: number) =>
+  post<ProjectDetail>(`/projects/${id}/confirm-all`, {});
+
+/** 完成：复制「通过」到目标目录 → 删 workspace → 标记完成。 */
+export const completeProject = (id: number) =>
+  post<CompleteResult>(`/projects/${id}/complete`, {});
+
+/** 开始/恢复 PK。 */
+export const pkStart = (id: number, gk: string, pool: string[], restart = false) =>
+  post<PkView>(`/projects/${id}/groups/${enc(gk)}/pk/start`, { pool, restart });
+
+/** 对当前一对落一次选择。 */
+export const pkChoose = (id: number, gk: string, outcome: PkOutcome) =>
+  post<PkView>(`/projects/${id}/groups/${enc(gk)}/pk/choose`, { outcome });
+
+/** 撤销上一步 PK。 */
+export const pkUndo = (id: number, gk: string) =>
+  post<PkView>(`/projects/${id}/groups/${enc(gk)}/pk/undo`, {});

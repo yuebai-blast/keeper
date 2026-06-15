@@ -1,106 +1,119 @@
 <script setup lang="ts">
-// A/B 擂台：擂主守擂法。当前擂主 vs 下一张挑战者，用户选谁更好；
-// N 张照片经 N-1 轮选出 1 张本组最佳。机器不替用户淘汰——留谁、是否整组舍弃都由用户定。
+// PK 擂台：用户两两对决，四种结局（选左/选右/都选/都不选）。
+// 状态权威在 sidecar（每次选择持久化），本组件只驱动交互、显示当前一对。
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { thumbnailUrl } from "../api";
+import { thumbnailUrl, type PhotoView, type PkOutcome, type PkView } from "../api";
+import { useProjectsStore } from "../stores/projects";
+import PhotoStats from "./PhotoStats.vue";
 
-const props = defineProps<{ candidates: string[] }>();
-const emit = defineEmits<{ finish: [winner: string | null, losers: string[]]; close: [] }>();
+const props = defineProps<{
+  projectId: number;
+  gk: string;
+  pool: string[];
+  restart: boolean;
+  photos: PhotoView[];
+}>();
+const emit = defineEmits<{ close: [] }>();
 
-const champion = ref<string | null>(props.candidates[0] ?? null);
-const idx = ref(1); // 下一个挑战者下标
-const losers = ref<string[]>([]);
-const history = ref<{ champion: string; idx: number }[]>([]);
+const store = useProjectsStore();
+const view = ref<PkView | null>(null);
+const busy = ref(false);
 
-const challenger = computed(() => (idx.value < props.candidates.length ? props.candidates[idx.value] : null));
-const done = computed(() => challenger.value === null);
-const totalRounds = computed(() => Math.max(0, props.candidates.length - 1));
-const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
+const byPath = computed<Record<string, PhotoView>>(() =>
+  Object.fromEntries(props.photos.map((p) => [p.workspace_path, p])),
+);
+const left = computed(() => (view.value?.current ? byPath.value[view.value.current[0]] : null));
+const right = computed(() => (view.value?.current ? byPath.value[view.value.current[1]] : null));
+const done = computed(() => view.value?.done ?? false);
 
-function pick(championWins: boolean) {
-  if (champion.value === null || challenger.value === null) return;
-  history.value.push({ champion: champion.value, idx: idx.value });
-  losers.value.push(championWins ? challenger.value : champion.value);
-  if (!championWins) champion.value = challenger.value;
-  idx.value += 1;
+async function choose(outcome: PkOutcome) {
+  if (busy.value || done.value || !view.value?.current) return;
+  busy.value = true;
+  try {
+    view.value = await store.pkChoose(props.projectId, props.gk, outcome);
+  } finally {
+    busy.value = false;
+  }
 }
-function undo() {
-  const last = history.value.pop();
-  if (!last) return;
-  champion.value = last.champion;
-  idx.value = last.idx;
-  losers.value.pop();
-}
-function keepWinner() {
-  emit("finish", champion.value, [...losers.value]);
-}
-function discardGroup() {
-  emit("finish", null, [...props.candidates]);
+async function undo() {
+  if (busy.value || !view.value?.can_undo) return;
+  busy.value = true;
+  try {
+    view.value = await store.pkUndo(props.projectId, props.gk);
+  } finally {
+    busy.value = false;
+  }
 }
 
 function onKey(e: KeyboardEvent) {
   if (e.key === "Escape") return emit("close");
-  if (done.value) {
-    if (e.key === "Enter") keepWinner();
-    return;
-  }
-  if (e.key === "ArrowLeft") pick(true);
-  else if (e.key === "ArrowRight") pick(false);
+  if (done.value) return;
+  if (e.key === "ArrowLeft") choose("pick_left");
+  else if (e.key === "ArrowRight") choose("pick_right");
+  else if (e.key === "ArrowUp") choose("keep_both");
+  else if (e.key === "ArrowDown") choose("drop_both");
   else if (e.key === "u" || e.key === "U") undo();
 }
-onMounted(() => window.addEventListener("keydown", onKey));
+
+onMounted(async () => {
+  busy.value = true;
+  try {
+    view.value = await store.pkStart(props.projectId, props.gk, props.pool, props.restart);
+  } finally {
+    busy.value = false;
+  }
+  window.addEventListener("keydown", onKey);
+});
 onUnmounted(() => window.removeEventListener("keydown", onKey));
 </script>
 
 <template>
   <div class="arena">
     <div class="bar">
-      <span class="title">A/B 擂台</span>
+      <span class="title">PK 擂台</span>
       <span class="sep" />
-      <span v-if="!done" class="round">第 {{ history.length + 1 }} / {{ totalRounds }} 轮</span>
-      <span v-else class="round done">本组终选</span>
+      <span v-if="view && !done" class="round">剩 {{ view.pool_remaining }} 张待登场 · 已留 {{ view.kept_aside.length }}</span>
+      <span v-else-if="done" class="round done">本组 PK 结束</span>
       <span class="grow" />
       <button class="btn btn--ghost" @click="emit('close')">退出 <kbd>Esc</kbd></button>
     </div>
 
     <!-- 对决中 -->
-    <template v-if="!done && champion && challenger">
+    <template v-if="view && !done && left && right">
       <div class="duel">
-        <figure class="card" @click="pick(true)">
-          <span class="badge">擂主</span>
-          <img :src="thumbnailUrl(champion, 1024)" alt="" />
+        <figure class="card" @click="choose('pick_left')">
+          <img :src="thumbnailUrl(left.workspace_path, 1024)" alt="" />
           <figcaption>留左 <kbd>←</kbd></figcaption>
+          <div class="info"><PhotoStats :photo="left" /></div>
         </figure>
-        <div class="vs"><span>VS</span></div>
-        <figure class="card" @click="pick(false)">
-          <span class="badge">挑战者</span>
-          <img :src="thumbnailUrl(challenger, 1024)" alt="" />
+        <div class="mid">
+          <div class="vs"><span>VS</span></div>
+          <button class="btn btn--keep" @click="choose('keep_both')">都留 <kbd>↑</kbd></button>
+          <button class="btn btn--danger" @click="choose('drop_both')">都弃 <kbd>↓</kbd></button>
+        </div>
+        <figure class="card" @click="choose('pick_right')">
+          <img :src="thumbnailUrl(right.workspace_path, 1024)" alt="" />
           <figcaption>留右 <kbd>→</kbd></figcaption>
+          <div class="info"><PhotoStats :photo="right" /></div>
         </figure>
       </div>
       <footer>
-        <button class="btn" :disabled="!history.length" @click="undo">撤销 <kbd>U</kbd></button>
+        <button class="btn" :disabled="!view.can_undo" @click="undo">撤销 <kbd>U</kbd></button>
         <span class="grow" />
-        <button class="btn btn--danger" @click="discardGroup">整组舍弃</button>
+        <span class="muted">点图=留该张并继续守擂；都留=两张都通过；都弃=两张都淘汰</span>
       </footer>
     </template>
 
-    <!-- 选出胜者 -->
-    <template v-else-if="done && champion">
+    <!-- 结束 -->
+    <template v-else-if="done">
       <div class="result">
-        <figure>
-          <img :src="thumbnailUrl(champion, 1024)" alt="" />
-          <figcaption>本组胜出 · {{ basename(champion) }}</figcaption>
-        </figure>
+        <p class="big">PK 完成</p>
+        <p class="muted">已为本组更新「通过 / 未通过」，回到组详情查看。</p>
+        <button class="btn btn--keep lg" @click="emit('close')">完成 <kbd>↵</kbd></button>
       </div>
-      <footer>
-        <button class="btn" :disabled="!history.length" @click="undo">撤销 <kbd>U</kbd></button>
-        <span class="tally">已淘汰 {{ losers.length }} 张</span>
-        <span class="grow" />
-        <button class="btn btn--danger" @click="discardGroup">整组舍弃</button>
-        <button class="btn btn--keep" @click="keepWinner">留下这张 <kbd>↵</kbd></button>
-      </footer>
     </template>
+
+    <div v-else class="result"><p class="muted">正在准备…</p></div>
   </div>
 </template>
 
@@ -112,120 +125,56 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
   background: radial-gradient(120% 90% at 50% 0%, rgba(28, 21, 12, 0.98), rgba(8, 6, 4, 0.99));
   display: flex;
   flex-direction: column;
-  padding: 20px 24px 24px;
-  gap: 18px;
+  padding: 18px 22px 22px;
+  gap: 16px;
 }
-
 .bar { display: flex; align-items: center; gap: 12px; }
-.bar .title {
-  font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 0.02em;
-}
+.bar .title { font-family: var(--font-display); font-size: 16px; }
 .bar .sep { width: 1px; height: 16px; background: var(--line-strong); }
-.round { font-family: var(--font-mono); font-size: 12.5px; color: var(--amber); letter-spacing: 0.05em; }
+.round { font-family: var(--font-mono); font-size: 12.5px; color: var(--amber); letter-spacing: 0.04em; }
 .round.done { color: var(--green); }
 .grow { flex: 1; }
 
-.duel {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 28px;
-  min-height: 0;
-}
+.duel { flex: 1; display: flex; align-items: stretch; justify-content: center; gap: 20px; min-height: 0; }
 .card {
   margin: 0;
   position: relative;
   flex: 1;
-  max-width: 46%;
-  height: 100%;
+  max-width: 42%;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   cursor: pointer;
   border-radius: 12px;
   border: 2px solid var(--line);
   background: rgba(0, 0, 0, 0.25);
-  transition: border-color 0.16s, transform 0.1s, box-shadow 0.2s;
+  transition: border-color 0.16s, box-shadow 0.2s;
   overflow: hidden;
 }
 .card:hover { border-color: var(--amber); box-shadow: 0 0 0 4px var(--amber-soft), var(--shadow); }
-.card:active { transform: scale(0.992); }
-.card img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-.badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--amber-bright);
-  background: rgba(0, 0, 0, 0.55);
-  padding: 4px 10px;
-  border-radius: 6px;
-  backdrop-filter: blur(3px);
-}
+.card img { width: 100%; flex: 1; min-height: 0; object-fit: contain; display: block; background: #000; }
 .card figcaption {
-  position: absolute;
-  bottom: 12px;
-  font-size: 13px;
-  color: var(--ink-dim);
-  background: rgba(0, 0, 0, 0.5);
-  padding: 5px 12px;
-  border-radius: 7px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+  position: absolute; top: 12px; left: 12px;
+  font-size: 12px; color: var(--ink); background: rgba(0, 0, 0, 0.55);
+  padding: 4px 10px; border-radius: 7px; display: inline-flex; gap: 7px; align-items: center;
   backdrop-filter: blur(3px);
 }
-
-.vs {
-  flex: none;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  display: grid;
-  place-items: center;
+.card .info {
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  max-height: 38%;
+  overflow: auto;
 }
-.vs span {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 17px;
-  color: var(--amber);
-}
-
-.result {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-}
-.result figure {
-  margin: 0;
-  position: relative;
-  max-width: 72%;
-  max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.result img {
-  max-width: 100%;
-  max-height: calc(100% - 36px);
-  object-fit: contain;
-  border-radius: 12px;
-  border: 2px solid var(--green);
-  box-shadow: 0 0 0 5px var(--green-soft), var(--shadow);
-}
-.result figcaption { margin-top: 14px; color: var(--green); font-weight: 500; font-size: 14px; }
+.mid { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.vs { width: 50px; height: 50px; border-radius: 50%; border: 1px solid var(--line-strong); display: grid; place-items: center; }
+.vs span { font-family: var(--font-display); font-style: italic; font-size: 17px; color: var(--amber); }
 
 footer { display: flex; align-items: center; gap: 12px; }
-.tally { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-faint); }
+.muted { color: var(--ink-faint); font-size: 12px; font-family: var(--font-mono); }
+
+.result { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.result .big { font-family: var(--font-display); font-size: 26px; color: var(--green); margin: 0; }
+.result .lg { padding: 11px 24px; font-size: 14.5px; }
 
 kbd {
   font-family: var(--font-mono);
@@ -238,6 +187,5 @@ kbd {
   min-width: 18px;
   text-align: center;
 }
-.btn--keep kbd,
-.btn--danger kbd { color: inherit; border-color: currentColor; opacity: 0.7; }
+.btn--keep kbd, .btn--danger kbd { color: inherit; border-color: currentColor; opacity: 0.7; }
 </style>
