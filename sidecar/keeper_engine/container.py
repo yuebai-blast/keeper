@@ -86,6 +86,7 @@ class Container(containers.DeclarativeContainer):
         readiness=readiness_service,
         funnel=funnel_service,
         params=params_service,
+        concurrency=settings.provided.local_concurrency,
     )
     scoring_service = providers.Factory(
         ScoringService,

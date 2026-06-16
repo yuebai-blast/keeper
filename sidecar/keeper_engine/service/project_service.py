@@ -282,7 +282,11 @@ class ProjectService:
         return self.get_group_detail(project_id, group_key)
 
     def confirm_all(self, project_id: int) -> ProjectDetailResponse:
-        """一键通过：未评测的组先评测（默认信任大模型），再把所有组置为已确认。"""
+        """一键通过：未评测的组先评测（默认信任大模型），再把所有组置为已确认。
+
+        跨组「不」并行：组内层①已逐张并发、层②已按 ark_concurrency 并发；若再跨组并行，
+        会叠加放大本地模型与显存/CPU 占用，风险（OOM/抖动）大于收益，故此处逐组串行。
+        """
         self._require_project(project_id)
         for g in self._groups.by_project(project_id):
             if g.status == GroupStatus.PENDING.value:
