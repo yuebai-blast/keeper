@@ -21,6 +21,15 @@ const STATUS: Record<string, string> = { pending: "待评测", assessed: "已评
 const confirmedCount = computed(
   () => store.detail?.groups.filter((g) => g.status === "confirmed").length ?? 0,
 );
+const pendingGroups = computed(() =>
+  (store.detail?.groups ?? []).filter((g) => g.status !== "confirmed"),
+);
+const confirmedGroups = computed(() =>
+  (store.detail?.groups ?? []).filter((g) => g.status === "confirmed"),
+);
+// 组序号沿用「在全部分组中的原始次序」，避免两区各自从 1 起造成同号歧义
+const indexOf = (gk: string) =>
+  (store.detail?.groups ?? []).findIndex((g) => g.group_key === gk);
 
 async function confirmAll() {
   if (!window.confirm("一键通过会对尚未评测的分组调用大模型评分（可能产生费用），并把所有分组按大模型的选择标记为已确认。继续？")) return;
@@ -50,26 +59,53 @@ async function submit() {
     <p v-if="store.busy" class="muted">处理中…</p>
     <p v-if="store.error" class="err">{{ store.error }}</p>
 
-    <ul class="list">
-      <li
-        v-for="(g, i) in store.detail.groups"
-        :key="g.group_key"
-        class="card"
-        @click="router.push(`/projects/${pid}/groups/${g.group_key}`)"
-      >
-        <div class="title">
-          <span class="gname">组 {{ i + 1 }}</span>
-          <span class="count">{{ g.photo_count }} 张</span>
-          <span class="status" :class="`s-${g.status}`">{{ STATUS[g.status] ?? g.status }}</span>
-          <span v-if="g.status !== 'pending'" class="kept">通过 {{ g.kept_count }}</span>
-        </div>
-        <div class="sub">
-          <span v-if="g.location">{{ g.location }}</span>
-          <span v-if="fmtTimeRange(g.time_start, g.time_end)">· {{ fmtTimeRange(g.time_start, g.time_end) }}</span>
-        </div>
-        <GroupThumbs :paths="g.photo_paths" :labels="g.photo_names" />
-      </li>
-    </ul>
+    <section v-if="pendingGroups.length" class="zone">
+      <h2 class="zone-title">待处理 · {{ pendingGroups.length }}</h2>
+      <ul class="list">
+        <li
+          v-for="g in pendingGroups"
+          :key="g.group_key"
+          class="card"
+          @click="router.push(`/projects/${pid}/groups/${g.group_key}`)"
+        >
+          <div class="title">
+            <span class="gname">组 {{ indexOf(g.group_key) + 1 }}</span>
+            <span class="count">{{ g.photo_count }} 张</span>
+            <span class="status" :class="`s-${g.status}`">{{ STATUS[g.status] ?? g.status }}</span>
+            <span v-if="g.status !== 'pending'" class="kept">通过 {{ g.kept_count }}</span>
+          </div>
+          <div class="sub">
+            <span v-if="g.location">{{ g.location }}</span>
+            <span v-if="fmtTimeRange(g.time_start, g.time_end)">· {{ fmtTimeRange(g.time_start, g.time_end) }}</span>
+          </div>
+          <GroupThumbs :paths="g.photo_paths" :labels="g.photo_names" />
+        </li>
+      </ul>
+    </section>
+
+    <section v-if="confirmedGroups.length" class="zone zone--done">
+      <h2 class="zone-title">已处理 · {{ confirmedGroups.length }}</h2>
+      <ul class="list">
+        <li
+          v-for="g in confirmedGroups"
+          :key="g.group_key"
+          class="card"
+          @click="router.push(`/projects/${pid}/groups/${g.group_key}`)"
+        >
+          <div class="title">
+            <span class="gname">组 {{ indexOf(g.group_key) + 1 }}</span>
+            <span class="count">{{ g.photo_count }} 张</span>
+            <span class="status" :class="`s-${g.status}`">{{ STATUS[g.status] ?? g.status }}</span>
+            <span class="kept">通过 {{ g.kept_count }}</span>
+          </div>
+          <div class="sub">
+            <span v-if="g.location">{{ g.location }}</span>
+            <span v-if="fmtTimeRange(g.time_start, g.time_end)">· {{ fmtTimeRange(g.time_start, g.time_end) }}</span>
+          </div>
+          <GroupThumbs :paths="g.photo_paths" :labels="g.photo_names" />
+        </li>
+      </ul>
+    </section>
 
     <footer class="actions">
       <button class="btn" :disabled="store.busy" @click="confirmAll">一键通过所有分组</button>
@@ -121,4 +157,17 @@ async function submit() {
 .actions { display: flex; align-items: center; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .grow { flex: 1; }
 .hint { margin: 0; color: var(--ink-faint); font-size: 12px; text-align: right; }
+
+.zone { display: flex; flex-direction: column; gap: 10px; }
+.zone-title {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.zone--done { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--line); }
+.zone--done .card { opacity: 0.62; }
+.zone--done .card:hover { opacity: 1; }
 </style>
