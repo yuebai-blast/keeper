@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 通用确认模态框：遮罩 + 居中卡片，标题/正文(slot)/确认取消。受 v-model:open 控制。
 // 支持 Esc 与点遮罩取消。视觉沿用产品 CSS 变量。
-import { watch } from "vue";
+import { onBeforeUnmount, watch } from "vue";
 
 const props = defineProps<{
   open: boolean;
@@ -34,6 +34,9 @@ watch(
     else window.removeEventListener("keydown", onKey);
   },
 );
+// watch 只在 open 翻转时增删监听；若组件在弹框开启时被卸载（如路由跳走），watch 不会触发，
+// 故在卸载钩子里兜底移除，避免全局 keydown 监听泄漏 + 卸载后回调里 emit。
+onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 </script>
 
 <template>
