@@ -1,15 +1,19 @@
 <script setup lang="ts">
 // 分组列表：各组摘要 + 进入；底部一键通过 / 提交完成（全组确认才可提交）。
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useProjectsStore } from "../stores/projects";
 import { fmtTimeRange } from "../util/format";
 import GroupThumbs from "../components/GroupThumbs.vue";
+import ConfirmDialog from "../components/ConfirmDialog.vue";
 
 const props = defineProps<{ id: string }>();
 const store = useProjectsStore();
 const router = useRouter();
 const pid = computed(() => Number(props.id));
+
+const showConfirmAll = ref(false);
+const showSubmit = ref(false);
 
 onMounted(async () => {
   await store.loadProject(pid.value);
@@ -31,14 +35,12 @@ const confirmedGroups = computed(() =>
 const indexOf = (gk: string) =>
   (store.detail?.groups ?? []).findIndex((g) => g.group_key === gk);
 
-async function confirmAll() {
-  if (!window.confirm("一键通过会对尚未评测的分组调用大模型评分（可能产生费用），并把所有分组按大模型的选择标记为已确认。继续？")) return;
+async function doConfirmAll() {
   await store.confirmAll(pid.value);
 }
 
-async function submit() {
+async function doSubmit() {
   if (!store.allConfirmed) return;
-  if (!window.confirm("提交后将把所有「通过」的照片复制到输出目录，并删除 workspace 副本释放空间。确认完成？")) return;
   await store.complete(pid.value);
   router.push(`/projects/${pid.value}/complete`);
 }
@@ -108,13 +110,37 @@ async function submit() {
     </section>
 
     <footer class="actions">
-      <button class="btn" :disabled="store.busy" @click="confirmAll">一键通过所有分组</button>
+      <button class="btn" :disabled="store.busy" @click="showConfirmAll = true">一键通过所有分组</button>
       <span class="grow" />
-      <button class="btn btn--keep" :disabled="!store.allConfirmed || store.busy" @click="submit">
+      <button class="btn btn--keep" :disabled="!store.allConfirmed || store.busy" @click="showSubmit = true">
         提交并完成
       </button>
     </footer>
     <p v-if="!store.allConfirmed" class="hint">所有分组都确认后才能提交完成。</p>
+
+    <ConfirmDialog
+      v-model:open="showConfirmAll"
+      title="一键通过所有分组？"
+      confirm-text="继续并开始评分"
+      danger
+      @confirm="doConfirmAll"
+    >
+      <p>此操作会：</p>
+      <ul>
+        <li>对<strong>尚未评测</strong>的分组自动运行本地评分（层①）与<strong>在线大模型评分</strong>（层②）；</li>
+        <li>按大模型的选择把<strong>所有分组</strong>标记为「已确认」。</li>
+      </ul>
+      <p>其中在线大模型评分会调用外部服务，<strong>可能产生费用</strong>。标记后仍可逐组改回，但需重新逐组检查。</p>
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      v-model:open="showSubmit"
+      title="提交并完成？"
+      confirm-text="确认完成"
+      @confirm="doSubmit"
+    >
+      <p>提交后会把所有「通过」的照片复制到输出目录，并删除 workspace 副本释放空间。</p>
+    </ConfirmDialog>
   </section>
 </template>
 
