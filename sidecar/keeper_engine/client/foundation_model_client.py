@@ -50,7 +50,7 @@ class FoundationModelClient:
                 "AccessTypes": [_ACCESS_PUBLIC],  # 只要公开模型
             },
             "SortOrder": "Desc",
-            "SortBy": "UpdateTime",
+            "SortBy": "CreateTime",
         }
         resp = api.do_call(info, body)
         return self._parse(resp)
