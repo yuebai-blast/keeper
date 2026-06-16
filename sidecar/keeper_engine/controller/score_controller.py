@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends
 
 from ..container import Container
 from ..request.score_request import ScoreRequest
+from ..response.envelope import EnvelopeRoute
 from ..response.score_response import ScoreResponse
 from ..service.scoring_service import ScoringService
 
-router = APIRouter()
+router = APIRouter(route_class=EnvelopeRoute)
 
 
 @router.post("/score", response_model=ScoreResponse)

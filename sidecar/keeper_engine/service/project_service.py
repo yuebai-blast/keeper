@@ -5,7 +5,7 @@
   → update_selection / PK（用户裁决）→ confirm_group → complete（归档+清理 workspace）。
 
 照片不出本地：只动 workspace 副本与输出目录，绝不写源文件夹；拍摄地只把坐标交给在线反查。
-不静默降级：本地模型未就绪 503、大模型不可用 502 由所复用的引擎 service 抛出，这里不吞。
+不静默降级：本地模型未就绪（MODEL_NOT_READY）、大模型不可用（SCORER_FAILED）由所复用的引擎 service 抛出，这里不吞。
 """
 
 from __future__ import annotations
@@ -14,17 +14,18 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import HTTPException
 from PIL import Image
 
 from ..client.geocode_client import GeocodeClient
 from ..config.settings import Settings
+from ..enumeration.biz_code import BizCode
 from ..entity.photo_group import PhotoGroup
 from ..entity.project import Project
 from ..entity.project_photo import ProjectPhoto
 from ..enumeration.group_status import GroupStatus
 from ..enumeration.project_status import ProjectStatus
 from ..enumeration.selection import Selection
+from ..exception.errors import BizException
 from ..mapper.photo_group_mapper import PhotoGroupMapper
 from ..mapper.project_mapper import ProjectMapper
 from ..mapper.project_photo_mapper import ProjectPhotoMapper
@@ -84,7 +85,7 @@ class ProjectService:
         try:
             files = self._workspace.scan_images(folder)
         except (NotADirectoryError, FileNotFoundError) as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise BizException(BizCode.INVALID_SOURCE_FOLDER, str(e)) from e
 
         times: list[datetime] = []
         locations: list[str] = []
@@ -110,13 +111,13 @@ class ProjectService:
         """新建项目：校验名唯一 → 复制副本到 workspace → 落库照片与时间/拍摄地。"""
         name = self._validate_name(name)
         if self._projects.get_by_name(name):
-            raise HTTPException(status_code=409, detail=f"项目名已存在：{name}")
+            raise BizException(BizCode.PROJECT_NAME_DUPLICATE, f"项目名已存在：{name}")
         try:
             files = self._workspace.scan_images(source_folder)
         except (NotADirectoryError, FileNotFoundError) as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise BizException(BizCode.INVALID_SOURCE_FOLDER, str(e)) from e
         if not files:
-            raise HTTPException(status_code=400, detail="该文件夹内没有可导入的图片")
+            raise BizException(BizCode.NO_IMPORTABLE_IMAGES)
 
         workspace_dir = str(self._settings.workspace_dir / name)
         target_dir = str(self._settings.output_root / name)
@@ -296,7 +297,7 @@ class ProjectService:
         project = self._require_project(project_id)
         groups = self._groups.by_project(project_id)
         if not groups or any(g.status != GroupStatus.CONFIRMED.value for g in groups):
-            raise HTTPException(status_code=400, detail="还有未确认的分组，无法完成")
+            raise BizException(BizCode.GROUPS_NOT_ALL_CONFIRMED)
 
         kept = self._photos.kept_of(project_id)
         # 按相对路径还原原始目录树 + 原始文件名（rel 为空的老数据兜底拍平到原名）
@@ -371,19 +372,19 @@ class ProjectService:
     def _validate_name(name: str) -> str:
         name = (name or "").strip()
         if not name:
-            raise HTTPException(status_code=400, detail="项目名不能为空")
+            raise BizException(BizCode.INVALID_PROJECT_NAME, "项目名不能为空")
         if any(sep in name for sep in ("/", "\\")) or name in (".", "..") or "\x00" in name:
-            raise HTTPException(status_code=400, detail="项目名不能包含路径分隔符")
+            raise BizException(BizCode.INVALID_PROJECT_NAME, "项目名不能包含路径分隔符")
         return name
 
     def _require_project(self, project_id: int) -> Project:
         project = self._projects.get(project_id)
         if not project:
-            raise HTTPException(status_code=404, detail=f"项目不存在：{project_id}")
+            raise BizException(BizCode.PROJECT_NOT_FOUND, f"项目不存在：{project_id}")
         return project
 
     def _require_group(self, project_id: int, group_key: str) -> PhotoGroup:
         group = self._groups.get(project_id, group_key)
         if not group:
-            raise HTTPException(status_code=404, detail=f"分组不存在：{group_key}")
+            raise BizException(BizCode.GROUP_NOT_FOUND, f"分组不存在：{group_key}")
         return group

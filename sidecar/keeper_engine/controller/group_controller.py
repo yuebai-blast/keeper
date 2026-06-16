@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends
 
 from ..container import Container
 from ..request.group_request import GroupRequest
+from ..response.envelope import EnvelopeRoute
 from ..response.group_response import GroupResponse
 from ..service.grouping_service import GroupingService
 
-router = APIRouter()
+router = APIRouter(route_class=EnvelopeRoute)
 
 
 @router.post("/group", response_model=GroupResponse)

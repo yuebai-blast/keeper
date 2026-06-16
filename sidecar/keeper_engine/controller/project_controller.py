@@ -1,7 +1,7 @@
 """项目工作流端点：新建/预览、分组、评测、裁决、PK、确认、完成。
 
 只接线（解析请求 → 调 service → 返回），业务在 ProjectService / PkService。
-就绪/大模型门禁由所复用的引擎 service 抛 HTTPException（503/502），这里不重复判断。
+就绪/大模型门禁由所复用的引擎 service 抛 BizException（MODEL_NOT_READY / SCORER_FAILED），这里不重复判断。
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from ..request.project_request import (
     ProjectPreviewRequest,
     SelectionUpdateRequest,
 )
+from ..response.envelope import EnvelopeRoute
 from ..response.project_response import (
     CompleteResponse,
     GroupDetailResponse,
@@ -28,7 +29,7 @@ from ..response.project_response import (
 from ..service.pk_service import PkService
 from ..service.project_service import ProjectService
 
-router = APIRouter(prefix="/projects")
+router = APIRouter(prefix="/projects", route_class=EnvelopeRoute)
 
 
 @router.post("/preview", response_model=ProjectPreviewResponse)

@@ -1,17 +1,14 @@
 """层② 大模型打分端点编排：对层① survivors 生成低清预览上云打分，再按保底数 N 组装 PK 候选集。
 
 照片不出本地：只上传 make_preview 生成的低清 JPEG。
-单张读图失败记入 errors；大模型不可用（缺 key / 网络）整体 502——不静默降级。
+单张读图失败记入 errors；大模型不可用（缺 key / 网络）整体抛 SCORER_FAILED——不静默降级。
 本端点只用 imaging + 远程 Ark，不依赖本地模型预热，故不设就绪门禁。
 """
 
 from __future__ import annotations
 
-from fastapi import HTTPException
-
 from ..client.scorer import Preview, Scorer
 from ..config.settings import Settings
-from ..exception.errors import ScorerError
 from ..request.score_request import ScoreRequest
 from ..response.common import PhotoError
 from ..response.score_response import ScoreResponse
@@ -46,10 +43,8 @@ class ScoringService:
                 errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
 
         model = req.model or self._settings.ark_model
-        try:
-            scores = self._scorer.score(previews, model)
-        except ScorerError as e:
-            raise HTTPException(status_code=502, detail=f"层② 大模型打分失败：{e}") from e
+        # 大模型不可用抛 ScorerError，由 app 异常处理器统一映射为 SCORER_FAILED（HTTP 200 + ApiResponse）。
+        scores = self._scorer.score(previews, model)
 
         n = self._params.compute_n(req.group_total)
         pk_set = self._ranking.assemble_pk_set(req.group_id, scores, n)

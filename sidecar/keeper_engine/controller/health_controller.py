@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends
 
 from .. import __version__
 from ..container import Container
+from ..response.envelope import EnvelopeRoute
 from ..service.readiness_service import ReadinessService
 
-router = APIRouter()
+router = APIRouter(route_class=EnvelopeRoute)
 
 
 @router.get("/health")

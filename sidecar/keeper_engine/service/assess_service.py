@@ -1,15 +1,14 @@
 """层① 本地评分端点编排：逐张打分 → 漏斗（保底数 M）收口出 survivors。
 
-模型未就绪（预热中/失败）直接 503，不傻等也不假装健康；
+模型未就绪（预热中/失败）直接抛 MODEL_NOT_READY，不傻等也不假装健康；
 单张数据错误（文件损坏等）记入 errors、不中断。
 """
 
 from __future__ import annotations
 
-from fastapi import HTTPException
-
 from ..converter import score_converter
-from ..exception.errors import VisionUnavailable
+from ..enumeration.biz_code import BizCode
+from ..exception.errors import BizException, VisionUnavailable
 from ..request.assess_request import AssessRequest
 from ..response.assess_response import AssessResponse
 from ..response.common import PhotoError
@@ -37,9 +36,9 @@ class AssessService:
 
     def assess(self, req: AssessRequest) -> AssessResponse:
         if self._readiness.status != "ready":
-            raise HTTPException(
-                status_code=503,
-                detail=f"模型未就绪（{self._readiness.status}）：{self._readiness.detail or '预热中，请稍后重试'}",
+            raise BizException(
+                BizCode.MODEL_NOT_READY,
+                f"模型未就绪（{self._readiness.status}）：{self._readiness.detail or '预热中，请稍后重试'}",
             )
         scores: list[LocalScore] = []
         errors: list[PhotoError] = []
@@ -47,7 +46,7 @@ class AssessService:
             try:
                 scores.append(self._prescreen.assess_photo(photo.path, photo.companions))
             except VisionUnavailable as e:
-                raise HTTPException(status_code=503, detail=f"本地模型不可用：{e}") from e
+                raise BizException(BizCode.MODEL_NOT_READY, f"本地模型不可用：{e}") from e
             except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
                 errors.append(PhotoError(path=photo.path, error=f"{type(e).__name__}: {e}"))
 

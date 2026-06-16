@@ -3,10 +3,11 @@
 """
 
 import pytest
-from fastapi import HTTPException
 from PIL import Image
 
 from keeper_engine.client.geocode_client import GeocodeClient
+from keeper_engine.enumeration.biz_code import BizCode
+from keeper_engine.exception.errors import BizException
 from keeper_engine.config.database import Database
 from keeper_engine.config.settings import Settings
 from keeper_engine.enumeration.pk_origin import PkOrigin
@@ -99,9 +100,9 @@ def test_duplicate_name_rejected(svc, tmp_path):
     service, _ = svc
     src = _make_source(tmp_path, 2)
     service.create("dup", str(src))
-    with pytest.raises(HTTPException) as ei:
+    with pytest.raises(BizException) as ei:
         service.create("dup", str(src))
-    assert ei.value.status_code == 409
+    assert ei.value.biz == BizCode.PROJECT_NAME_DUPLICATE
 
 
 def test_full_flow_to_completion(svc, tmp_path):
@@ -121,10 +122,10 @@ def test_full_flow_to_completion(svc, tmp_path):
     assert any(p.selection == Selection.DISCARDED.value for p in gd.photos)
     assert all(p.local_score == 70.0 for p in gd.photos)  # 层①落库
 
-    # 完成门禁：还有未确认分组 → 400
-    with pytest.raises(HTTPException) as ei:
+    # 完成门禁：还有未确认分组 → GROUPS_NOT_ALL_CONFIRMED
+    with pytest.raises(BizException) as ei:
         service.complete(pid)
-    assert ei.value.status_code == 400
+    assert ei.value.biz == BizCode.GROUPS_NOT_ALL_CONFIRMED
 
     # 一键通过（会评测 g2 并全部确认）
     service.confirm_all(pid)

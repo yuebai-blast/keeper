@@ -19,10 +19,10 @@ from datetime import datetime
 from typing import Sequence
 
 import numpy as np
-from fastapi import HTTPException
 
 from ..client.vision_client import VisionClient
-from ..exception.errors import VisionUnavailable
+from ..enumeration.biz_code import BizCode
+from ..exception.errors import BizException, VisionUnavailable
 from ..request.group_request import GroupRequest
 from ..response.common import PhotoError
 from ..response.group_response import GroupResponse
@@ -53,9 +53,9 @@ class GroupingService:
     def group(self, req: GroupRequest) -> GroupResponse:
         """分组端点编排：就绪门禁 → 逐张取特征（单张失败记 errors）→ 聚类 → 组装响应。"""
         if self._readiness.status != "ready":
-            raise HTTPException(
-                status_code=503,
-                detail=f"模型未就绪（{self._readiness.status}）：{self._readiness.detail or '预热中，请稍后重试'}",
+            raise BizException(
+                BizCode.MODEL_NOT_READY,
+                f"模型未就绪（{self._readiness.status}）：{self._readiness.detail or '预热中，请稍后重试'}",
             )
         paths, embeddings, face_sets, times = [], [], [], []
         errors: list[PhotoError] = []
@@ -67,7 +67,7 @@ class GroupingService:
                 face_sets.append(faces)
                 times.append(t)
             except VisionUnavailable as e:
-                raise HTTPException(status_code=503, detail=f"本地模型不可用：{e}") from e
+                raise BizException(BizCode.MODEL_NOT_READY, f"本地模型不可用：{e}") from e
             except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
                 errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
 

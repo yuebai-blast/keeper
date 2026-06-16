@@ -20,6 +20,7 @@ from .controller import (
     score_controller,
     thumbnail_controller,
 )
+from .response.envelope import install_exception_handlers
 
 
 def create_app() -> FastAPI:
@@ -38,6 +39,9 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Keeper Engine", version=__version__, lifespan=lifespan)
     app.container = container
+
+    # 统一响应包装：领域异常 → HTTP 200 + ApiResponse（成功响应的自动包装在各 EnvelopeRoute）。
+    install_exception_handlers(app)
 
     # 桌面端 Tauri webview 经浏览器上下文跨源调用本服务，需放行本地来源。
     # 服务只绑 127.0.0.1（仅本机可达），故放行 localhost / tauri 来源是安全的。

@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends
 from ..container import Container
 from ..request.assess_request import AssessRequest
 from ..response.assess_response import AssessResponse
+from ..response.envelope import EnvelopeRoute
 from ..service.assess_service import AssessService
 
-router = APIRouter()
+router = APIRouter(route_class=EnvelopeRoute)
 
 
 @router.post("/assess", response_model=AssessResponse)
