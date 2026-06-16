@@ -1,6 +1,6 @@
 // 引擎（sidecar）连接状态的 Pinia store。
 import { defineStore } from "pinia";
-import { ApiError, consentWarmup, getHealth, reloadModels, retryWarmup, type Health } from "../api";
+import { ApiError, BizCode, consentWarmup, getHealth, reloadModels, retryWarmup, type Health } from "../api";
 
 interface EngineState {
   health: Health | null;
@@ -63,9 +63,9 @@ export const useEngineStore = defineStore("engine", {
         this.error = e instanceof Error ? e.message : String(e);
       }
     },
-    // 运行时 API 报错时调用：若是「模型不可用 503」，进入修复（强制重新加载模型）。
+    // 运行时 API 报错时调用：若是「模型未就绪 MODEL_NOT_READY」，进入修复（强制重新加载模型）。
     reportError(e: unknown) {
-      if (e instanceof ApiError && e.status === 503 && this.health?.status === "ready") {
+      if (e instanceof ApiError && e.code === BizCode.MODEL_NOT_READY && this.health?.status === "ready") {
         this.needsRepair = true;
         void this.repair();
       }

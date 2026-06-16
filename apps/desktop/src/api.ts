@@ -24,31 +24,57 @@ export interface Health {
   progress: Progress;
 }
 
-/** 带 HTTP 状态码的 API 错误（供前端区分「模型不可用 503」以进修复页）。 */
+/** 统一响应结构体（与 sidecar ApiResponse 对齐）：恒 HTTP 200，业务成败看 code。 */
+export interface ApiResponse<T> {
+  code: number; // 0=成功，非 0 见 BizCode
+  data: T | null;
+  msg: string | null;
+}
+
+/** 业务错误码（镜像 sidecar enumeration/biz_code.py，改任一端两边同步）。 */
+export const BizCode = {
+  SUCCESS: 0,
+  INTERNAL_ERROR: 110001,
+  VALIDATION_ERROR: 110002,
+  MODEL_NOT_READY: 210001,
+  MODEL_DEPENDENCY_MISSING: 210002,
+  SCORER_FAILED: 310001,
+  PROJECT_NAME_DUPLICATE: 410001,
+  PROJECT_NOT_FOUND: 410002,
+  GROUP_NOT_FOUND: 410003,
+  INVALID_PROJECT_NAME: 410004,
+  NO_IMPORTABLE_IMAGES: 410005,
+  INVALID_SOURCE_FOLDER: 410006,
+  GROUPS_NOT_ALL_CONFIRMED: 410007,
+} as const;
+
+/** 业务错误：携带业务码 code（供前端区分「模型未就绪 210001」以进修复页）。 */
 export class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
+  code: number;
+  constructor(code: number, message: string) {
     super(message);
-    this.status = status;
+    this.code = code;
   }
 }
 
-async function ensureOk(resp: Response): Promise<void> {
-  if (resp.ok) return;
-  let detail = `${resp.status} ${resp.statusText}`;
+/** 解析统一响应：code===0 返回 data，否则抛 ApiError；非 JSON/网络异常兜底为内部错误。 */
+async function unwrap<T>(resp: Response): Promise<T> {
+  let body: ApiResponse<T>;
   try {
-    const body = await resp.json();
-    if (body?.detail) detail = body.detail;
+    body = (await resp.json()) as ApiResponse<T>;
   } catch {
-    /* 非 JSON 响应，保留默认信息 */
+    // 非 JSON（如框架层 500/404）——兜底成内部错误。
+    throw new ApiError(BizCode.INTERNAL_ERROR, `${resp.status} ${resp.statusText}`);
   }
-  throw new ApiError(resp.status, detail);
+  if (body.code !== BizCode.SUCCESS) {
+    throw new ApiError(body.code, body.msg ?? `错误码 ${body.code}`);
+  }
+  return body.data as T;
 }
 
 async function get<T>(path: string): Promise<T> {
   const resp = await fetch(`${BASE}${path}`);
-  await ensureOk(resp);
-  return resp.json() as Promise<T>;
+  return unwrap<T>(resp);
 }
 
 /** 查询 sidecar 健康/就绪状态。连不上会抛错（服务没起）。 */
@@ -93,8 +119,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  await ensureOk(resp);
-  return resp.json() as Promise<T>;
+  return unwrap<T>(resp);
 }
 
 /** 把一批照片路径分成「瞬间组」（DINOv2 语义 + 时间）。 */
