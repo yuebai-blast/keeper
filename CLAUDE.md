@@ -57,15 +57,17 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 服务只绑 `127.0.0.1`，默认端口 **8761**（`mise run sidecar -- --port` 改），前端经 `VITE_SIDECAR_URL` 覆盖基址。CORS 仅放行 localhost / `tauri://localhost`。端点定义在 `sidecar/keeper_engine/controller/*`（经 DI 注入 service），前端客户端镜像在 `apps/desktop/src/api.ts`——**改任一端的请求/响应结构，两边都要同步**。
 
-| 端点 | 作用 | 就绪门禁 |
+**统一响应包装（全局规范）**：所有 JSON 端点**恒返回 HTTP 200**，业务成败由响应体 `ApiResponse{code,data,msg}` 的 `code` 表达（`0`=成功）。成功响应由各 controller 的 `EnvelopeRoute`（`response/envelope.py`）自动包成 `{code:0,data:<原返回>,msg:null}`，controller 代码不变；异常由 `app.py` 注册的处理器按 `BizCode`（`enumeration/biz_code.py`）统一翻译成 `{code,data:null,msg}`。业务码为 6 位、前两位分段（`11`通用/`21`本地模型/`31`大模型/`41`项目工作流）。**例外**：`GET /thumbnail` 返回二进制 JPEG，豁免包装（解码失败仍用原生 404）。前端 `api.ts` 的 `get/post` 自动解包 `data`，`code!==0` 抛 `ApiError(code,msg)`；`BizCode` 常量在两端各存一份镜像，**改任一端两边同步**。下表「门禁」列写的是失败时返回的业务码。
+
+| 端点 | 作用 | 门禁（失败业务码） |
 | :-- | :-- | :-- |
 | `GET /health` | 存活 + 层①模型就绪态（`loading`/`ready`/`error`），后台预热线程更新 | — |
-| `GET /thumbnail?path=&size=` | sidecar 解码（含 RAW/HEIC）并缩放出 JPEG；就近缓存于原图同目录 `.thumbnails/{stem}@{size}.jpg`（副本不可变，无需失效判断）；只走 localhost | — |
-| `POST /group` | 把照片路径聚成「瞬间组」 | 需 `ready`，否则 503 |
-| `POST /assess` | 层①本地评分 + 漏斗收口出 survivors | 需 `ready`，否则 503 |
-| `POST /score` | 层②大模型打分 + 组装 PK 候选集 | 不依赖本地模型，缺 key/网络 → 502 |
+| `GET /thumbnail?path=&size=` | sidecar 解码（含 RAW/HEIC）并缩放出 JPEG；就近缓存于原图同目录 `.thumbnails/{stem}@{size}.jpg`（副本不可变，无需失效判断）；只走 localhost；**二进制豁免 ApiResponse** | — |
+| `POST /group` | 把照片路径聚成「瞬间组」 | 需 `ready`，否则 `MODEL_NOT_READY` |
+| `POST /assess` | 层①本地评分 + 漏斗收口出 survivors | 需 `ready`，否则 `MODEL_NOT_READY` |
+| `POST /score` | 层②大模型打分 + 组装 PK 候选集 | 不依赖本地模型，缺 key/网络 → `SCORER_FAILED` |
 
-容错约定：批量端点对**单张读图失败记入 `errors` 不中断**；本地模型整体不可用（预热失败/缺依赖）才 503，大模型不可用才 502——一律显式报错，不静默降级。
+容错约定：批量端点对**单张读图失败记入 `errors` 不中断**；本地模型整体不可用（预热失败/缺依赖）才抛 `MODEL_NOT_READY`/`MODEL_DEPENDENCY_MISSING`，大模型不可用才抛 `SCORER_FAILED`——一律显式报错，不静默降级。
 
 > 上面 5 个是**无状态推理端点**（直收路径、即算即返）。下面是**项目工作流端点**——状态持久化在 sidecar（sqlite），是桌面端选片流程的主接口。
 
@@ -76,15 +78,15 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 | 端点 | 作用 | 门禁 |
 | :-- | :-- | :-- |
 | `POST /projects/preview` | 扫描源文件夹：数量 / 拍摄时间范围 / 拍摄地（不建项目） | — |
-| `POST /projects` | 建项目 + **递归**收图、复制副本到 `~/.keeper/workspace/{名}` 并改名为随机 UUID（扁平、回避重名；不动源）。DB 存原始相对路径，完成时据此还原原始目录树+原名 | 名重复→409 |
-| `GET /projects` · `GET /projects/{id}` | 项目列表 / 项目详情（含各组摘要） | — |
-| `POST /projects/{id}/group` | 分组并落库（写 group_key + 建组、聚合拍摄地/时间） | 需 `ready`→503 |
-| `GET /projects/{id}/groups/{gk}` | 组详情：照片 + 两层评分 + 去留 + PK 进度 | — |
-| `POST /projects/{id}/groups/{gk}/assess` | 层①+层②评测、初始化去留；已评测则原样返回 | `ready`→503，层②→502 |
+| `POST /projects` | 建项目 + **递归**收图、复制副本到 `~/.keeper/workspace/{名}` 并改名为随机 UUID（扁平、回避重名；不动源）。DB 存原始相对路径，完成时据此还原原始目录树+原名 | 名重复→`PROJECT_NAME_DUPLICATE` |
+| `GET /projects` · `GET /projects/{id}` | 项目列表 / 项目详情（含各组摘要） | 不存在→`PROJECT_NOT_FOUND` |
+| `POST /projects/{id}/group` | 分组并落库（写 group_key + 建组、聚合拍摄地/时间） | 需 `ready`→`MODEL_NOT_READY` |
+| `GET /projects/{id}/groups/{gk}` | 组详情：照片 + 两层评分 + 去留 + PK 进度 | 不存在→`GROUP_NOT_FOUND` |
+| `POST /projects/{id}/groups/{gk}/assess` | 层①+层②评测、初始化去留；已评测则原样返回 | `ready`→`MODEL_NOT_READY`，层②→`SCORER_FAILED` |
 | `POST …/{gk}/selection` · `…/{gk}/confirm` | 改去留/救回标记 · 确认本组（标识，可改回） | — |
 | `POST …/{gk}/pk/start` · `…/pk/choose` · `…/pk/undo` | PK 擂台：起/选（四结局）/撤销，每步落库 | — |
-| `POST /projects/{id}/confirm-all` | 一键通过：未评测组先评测，再全部确认 | `ready`→503，层②→502 |
-| `POST /projects/{id}/complete` | 复制「通过」到目标目录 + 删 workspace + 标记完成 | 全组确认才放行，否则 400 |
+| `POST /projects/{id}/confirm-all` | 一键通过：未评测组先评测，再全部确认 | `ready`→`MODEL_NOT_READY`，层②→`SCORER_FAILED` |
+| `POST /projects/{id}/complete` | 复制「通过」到目标目录 + 删 workspace + 标记完成 | 全组确认才放行，否则 `GROUPS_NOT_ALL_CONFIRMED` |
 
 ## 分层与漏斗管线模块地图（最关键逻辑）
 
@@ -92,7 +94,8 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 `controller`（路由，只接线）→ `service`（业务/编排）→ `client`（外部依赖：本地模型 / 大模型）。
 配置在 `config/settings.py`（收口所有环境变量），出入参在 `request`/`response`，值对象在 `vo`，
 枚举/异常/转换在 `enumeration`/`exception`/`converter`，纯函数工具在 `util`（影像 IO、CV 信号）。
-入口 `main.py`（uvicorn）→ `app.py`（建容器、CORS、lifespan 启动预热、注册各 controller）。
+统一响应包装在 `response/api_response.py`（`ApiResponse{code,data,msg}`）+ `response/envelope.py`（`EnvelopeRoute` 自动包成功响应 + `install_exception_handlers` 把领域异常按 `enumeration/biz_code.py` 的 `BizCode` 翻译成 HTTP 200）；service 中断用 `raise BizException(BizCode.X)`。
+入口 `main.py`（uvicorn）→ `app.py`（建容器、CORS、注册异常处理器、lifespan 启动预热、注册各 controller）。
 
 数据流：分组 → 层①逐张打分 → 层②大模型打分 + 组 PK。关键模块：
 
