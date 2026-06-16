@@ -27,6 +27,7 @@ from ..enumeration.project_status import ProjectStatus
 from ..enumeration.selection import Selection
 from ..exception.errors import BizException
 from ..mapper.photo_group_mapper import PhotoGroupMapper
+from ..mapper.pk_state_mapper import PkStateMapper
 from ..mapper.project_mapper import ProjectMapper
 from ..mapper.project_photo_mapper import ProjectPhotoMapper
 from ..request.assess_request import AssessRequest, PhotoRef
@@ -59,6 +60,7 @@ class ProjectService:
         project_mapper: ProjectMapper,
         photo_mapper: ProjectPhotoMapper,
         group_mapper: PhotoGroupMapper,
+        pk_mapper: PkStateMapper,
         grouping: GroupingService,
         assess: AssessService,
         scoring: ScoringService,
@@ -70,6 +72,7 @@ class ProjectService:
         self._projects = project_mapper
         self._photos = photo_mapper
         self._groups = group_mapper
+        self._pk_states = pk_mapper
         self._grouping = grouping
         self._assess = assess
         self._scoring = scoring
@@ -308,6 +311,20 @@ class ProjectService:
         project.completed_at = datetime.now()
         self._projects.update(project)
         return CompleteResponse(output_dir=project.target_dir, kept_count=len(kept))
+
+    # ── 删除 ────────────────────────────────────────────────────────────────
+
+    def delete(self, project_id: int) -> None:
+        """删除项目：清掉 workspace 副本目录 + 全部数据库资源（照片/组/PK/项目行）。
+
+        只删副本与项目自身存档，绝不动源文件夹与已完成项目的输出目录。
+        """
+        project = self._require_project(project_id)
+        self._workspace.remove_dir(project.workspace_dir)  # best-effort；已完成的项目副本可能已清
+        self._pk_states.delete_by_project(project_id)
+        self._photos.delete_by_project(project_id)
+        self._groups.delete_by_project(project_id)
+        self._projects.delete(project_id)
 
     # ── 读取 ────────────────────────────────────────────────────────────────
 

@@ -80,6 +80,7 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 | `POST /projects/preview` | 扫描源文件夹：数量 / 拍摄时间范围 / 拍摄地（不建项目） | — |
 | `POST /projects` | 建项目 + **递归**收图、复制副本到 `~/.keeper/workspace/{名}` 并改名为随机 UUID（扁平、回避重名；不动源）。DB 存原始相对路径，完成时据此还原原始目录树+原名 | 名重复→`PROJECT_NAME_DUPLICATE` |
 | `GET /projects` · `GET /projects/{id}` | 项目列表 / 项目详情（含各组摘要） | 不存在→`PROJECT_NOT_FOUND` |
+| `DELETE /projects/{id}` | 删项目：清 workspace 副本 + 全部 DB 资源（照片/组/PK/项目行）；不动源与已完成项目输出目录 | 不存在→`PROJECT_NOT_FOUND` |
 | `POST /projects/{id}/group` | 分组并落库（写 group_key + 建组、聚合拍摄地/时间） | 需 `ready`→`MODEL_NOT_READY` |
 | `GET /projects/{id}/groups/{gk}` | 组详情：照片 + 两层评分 + 去留 + PK 进度 | 不存在→`GROUP_NOT_FOUND` |
 | `POST /projects/{id}/groups/{gk}/assess` | 层①+层②评测、初始化去留；已评测则原样返回 | `ready`→`MODEL_NOT_READY`，层②→`SCORER_FAILED` |

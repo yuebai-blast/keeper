@@ -67,6 +67,16 @@ def get_project(
     return svc.get_detail(project_id)
 
 
+@router.delete("/{project_id}")
+@inject
+def delete_project(
+    project_id: int,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> None:
+    """删除项目：清理 workspace 副本 + 数据库资源（项目不存在→404 语义业务码）。"""
+    svc.delete(project_id)
+
+
 @router.post("/{project_id}/group", response_model=ProjectDetailResponse)
 @inject
 def group(

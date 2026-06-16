@@ -96,6 +96,7 @@ class Container(containers.DeclarativeContainer):
         project_mapper=project_mapper,
         photo_mapper=project_photo_mapper,
         group_mapper=photo_group_mapper,
+        pk_mapper=pk_state_mapper,
         grouping=grouping_service,
         assess=assess_service,
         scoring=scoring_service,

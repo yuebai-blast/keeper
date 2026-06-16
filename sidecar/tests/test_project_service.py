@@ -67,9 +67,10 @@ def svc(tmp_path):
     db = Database(settings)
     db.create_all()
     photos = ProjectPhotoMapper(db)
-    pk = PkService(photos, PkStateMapper(db))
+    pk_mapper = PkStateMapper(db)
+    pk = PkService(photos, pk_mapper)
     service = ProjectService(
-        ProjectMapper(db), photos, PhotoGroupMapper(db),
+        ProjectMapper(db), photos, PhotoGroupMapper(db), pk_mapper,
         FakeGrouping(), FakeAssess(), FakeScoring(), pk,
         WorkspaceService(), GeocodeClient(settings, GeocodeCacheMapper(db)), settings,
     )
@@ -103,6 +104,40 @@ def test_duplicate_name_rejected(svc, tmp_path):
     with pytest.raises(BizException) as ei:
         service.create("dup", str(src))
     assert ei.value.biz == BizCode.PROJECT_NAME_DUPLICATE
+
+
+def test_delete_removes_workspace_and_db_resources(svc, tmp_path):
+    """删除项目：清掉 workspace 副本 + 全部数据库资源（照片/组/PK/项目行），不动源。"""
+    service, settings = svc
+    src = _make_source(tmp_path, 4)
+    project = service.create("待删", str(src))
+    pid = project.id
+    service.group(pid)
+    service.assess_group(pid, "g1")
+    # 起一局 PK 以产生 PkState，验证删除时一并清理
+    pool = [p.workspace_path for p in service._photos.by_group(pid, "g1")]
+    service._pk.start(pid, "g1", pool, False)
+
+    ws = settings.workspace_dir / "待删"
+    assert ws.is_dir()
+    assert service._photos.by_project(pid) and service._groups.by_project(pid)
+    assert service._pk_states.get(pid, "g1") is not None
+
+    service.delete(pid)
+
+    assert not ws.exists()  # 副本目录已清
+    assert service._projects.get(pid) is None
+    assert service._photos.by_project(pid) == []
+    assert service._groups.by_project(pid) == []
+    assert service._pk_states.get(pid, "g1") is None
+    assert len(list(src.glob("*.jpg"))) == 4  # 源文件夹不动
+
+
+def test_delete_missing_project_rejected(svc):
+    service, _ = svc
+    with pytest.raises(BizException) as ei:
+        service.delete(99999)
+    assert ei.value.biz == BizCode.PROJECT_NOT_FOUND
 
 
 def test_full_flow_to_completion(svc, tmp_path):

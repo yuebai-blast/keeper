@@ -7,6 +7,7 @@ import {
   confirmAll,
   confirmGroup,
   createProject,
+  deleteProject,
   getGroup,
   getProject,
   groupProject,
@@ -66,6 +67,20 @@ export const useProjectsStore = defineStore("projects", {
         this.list = await listProjects();
       } catch (e) {
         this.error = e instanceof Error ? e.message : String(e);
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    /** 删除项目（清理副本 + 数据库资源），成功后从本地列表移除。 */
+    async remove(id: number) {
+      this.busy = true;
+      this.error = "";
+      try {
+        await deleteProject(id);
+        this.list = this.list.filter((p) => p.id !== id);
+      } catch (e) {
+        this._fail(e);
       } finally {
         this.busy = false;
       }

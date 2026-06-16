@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from ..config.database import Database
 from ..entity.photo_group import PhotoGroup
@@ -38,3 +38,9 @@ class PhotoGroupMapper:
             session.commit()
             session.refresh(merged)
             return merged
+
+    def delete_by_project(self, project_id: int) -> None:
+        """删除该项目的全部分组行（删项目时清理）。"""
+        with self._db.session() as session:
+            session.exec(delete(PhotoGroup).where(PhotoGroup.project_id == project_id))
+            session.commit()

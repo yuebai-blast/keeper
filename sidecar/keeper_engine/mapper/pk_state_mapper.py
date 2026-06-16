@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from ..config.database import Database
 from ..entity.pk_state import PkState
@@ -40,3 +40,9 @@ class PkStateMapper:
             session.commit()
             session.refresh(row)
             return row
+
+    def delete_by_project(self, project_id: int) -> None:
+        """删除该项目的全部 PK 状态行（删项目时清理）。"""
+        with self._db.session() as session:
+            session.exec(delete(PkState).where(PkState.project_id == project_id))
+            session.commit()

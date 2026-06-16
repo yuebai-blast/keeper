@@ -122,6 +122,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return unwrap<T>(resp);
 }
 
+async function del<T>(path: string): Promise<T> {
+  const resp = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  return unwrap<T>(resp);
+}
+
 /** 把一批照片路径分成「瞬间组」（DINOv2 语义 + 时间）。 */
 export function groupPhotos(photos: string[]): Promise<GroupResponse> {
   return post<GroupResponse>("/group", { photos });
@@ -297,6 +302,9 @@ export const listProjects = () => get<ProjectView[]>("/projects");
 
 /** 项目详情（项目 + 各组摘要）。 */
 export const getProject = (id: number) => get<ProjectDetail>(`/projects/${id}`);
+
+/** 删除项目：清理 workspace 副本 + 数据库资源。 */
+export const deleteProject = (id: number) => del<null>(`/projects/${id}`);
 
 /** 对项目跑分组并持久化（需模型就绪）。 */
 export const groupProject = (id: number) =>

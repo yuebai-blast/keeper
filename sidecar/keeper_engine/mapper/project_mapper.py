@@ -45,3 +45,11 @@ class ProjectMapper:
             session.commit()
             session.refresh(merged)
             return merged
+
+    def delete(self, project_id: int) -> None:
+        """按 id 删除项目行（照片/组/PK 等关联数据由各自 mapper 单独清理）。"""
+        with self._db.session() as session:
+            project = session.get(Project, project_id)
+            if project:
+                session.delete(project)
+                session.commit()
