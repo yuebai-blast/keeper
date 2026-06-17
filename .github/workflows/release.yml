@@ -28,7 +28,8 @@ jobs:
       - run: mise run stage-sidecar
       - name: Build Tauri app
         working-directory: apps/desktop
-        run: pnpm tauri build
+        # 经 mise exec 调用，确保用上 mise 安装并钉死的 pnpm（不依赖 PATH shim 是否已激活）
+        run: mise exec -- pnpm tauri build
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
