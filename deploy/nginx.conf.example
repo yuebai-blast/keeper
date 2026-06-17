@@ -17,6 +17,9 @@ server {
     root /var/www/keeper-site;                 # 与 KEEPER_SITE_PATH 一致
     index index.html;
 
+    # 已强制 HTTPS（见上方 80 端口的重定向），启用 HSTS 防止协议降级
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
     gzip on;
     gzip_types text/css application/javascript image/svg+xml application/json;
     gzip_min_length 1024;

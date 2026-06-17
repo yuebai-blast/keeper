@@ -7,6 +7,13 @@ on:
       - ".github/workflows/site.yml"
   workflow_dispatch:
 
+concurrency:
+  group: deploy-website
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,21 +27,27 @@ jobs:
 
       - name: Setup SSH
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           echo "${{ secrets.SITE_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.SITE_SSH_HOST }}" >> ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
 
-      - name: Rsync to server
+      - name: Deploy to server
         run: |
-          rsync -avz --delete -e "ssh -i ~/.ssh/id_ed25519" \
-            apps/website/dist/ \
-            "${{ secrets.SITE_SSH_USER }}@${{ secrets.SITE_SSH_HOST }}:${{ secrets.SITE_PATH }}/"
+          set -euo pipefail
+          export KEEPER_SITE_HOST="${{ secrets.SITE_SSH_USER }}@${{ secrets.SITE_SSH_HOST }}"
+          export KEEPER_SITE_PATH="${{ secrets.SITE_PATH }}"
+          bash deploy/deploy.sh
 
       - name: Purge Cloudflare cache
         run: |
-          curl -sf -X POST \
+          set -euo pipefail
+          resp=$(curl -sf -X POST \
             "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
             -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            --data '{"purge_everything":true}'
+            --data '{"purge_everything":true}')
+          echo "$resp"
+          echo "$resp" | jq -e '.success == true' > /dev/null
