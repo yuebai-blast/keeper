@@ -1,0 +1,40 @@
+name: Deploy Website
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/website/**"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise install
+      - run: mise run site-install
+      - run: mise run site-test
+      - run: mise run site-build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SITE_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.SITE_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Rsync to server
+        run: |
+          rsync -avz --delete -e "ssh -i ~/.ssh/id_ed25519" \
+            apps/website/dist/ \
+            "${{ secrets.SITE_SSH_USER }}@${{ secrets.SITE_SSH_HOST }}:${{ secrets.SITE_PATH }}/"
+
+      - name: Purge Cloudflare cache
+        run: |
+          curl -sf -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
