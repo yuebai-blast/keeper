@@ -5,6 +5,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+# ── PyInstaller 冻结产物（spec 入库，构建产物不入库）──
+sidecar/build/
+sidecar/dist/
 
 # ── Node / 前端 ──
 node_modules/

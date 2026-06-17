@@ -47,7 +47,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.4"]
+dev = ["pytest>=8", "ruff>=0.4", "pyinstaller>=6.6"]
 
 # ── uv 配置 ───────────────────────────────────────────────────────────────
 # OpenCV 三包冲突的根治：insightface / pyiqa 会把 opencv-python(-headless)
