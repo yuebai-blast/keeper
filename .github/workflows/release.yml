@@ -1,0 +1,40 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    permissions:
+      contents: write   # 让 GITHUB_TOKEN 能创建/写入 Release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14      # Apple 芯片 (arm64)
+          - os: macos-13      # Intel (x86_64)
+          - os: windows-latest  # Windows (x86_64)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise install
+      - run: mise run install
+      - run: mise run bundle-sidecar
+      - run: mise run stage-sidecar
+      - name: Build Tauri app
+        working-directory: apps/desktop
+        run: pnpm tauri build
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
