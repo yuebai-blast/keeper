@@ -219,6 +219,10 @@ class ProjectService:
             if p:
                 p.local_score = ls.score
                 p.local_detail = ls.detail.model_dump() if ls.detail else None
+        for err in assess_resp.errors:  # 层①单张失败：透出失败原因（不改去留行为）
+            p = by_path.get(err.path)
+            if p:
+                p.assess_error = err.error
         self._photos.update_many(photos)
 
         survivors = [s.path for s in assess_resp.survivors]
@@ -237,6 +241,10 @@ class ProjectService:
                     p.llm_flaws = sc.flaws
                     p.llm_editable = sc.editable
                     p.llm_edit_advice = sc.edit_advice
+            for err in score_resp.errors:  # 层②单张失败：透出失败原因（不改去留行为）
+                p = by_path.get(err.path)
+                if p:
+                    p.assess_error = err.error
             for entry in score_resp.pk:  # 层②漏斗通过的即「通过」
                 kept_paths.add(entry.path)
                 origin_by_path[entry.path] = entry.origin.value

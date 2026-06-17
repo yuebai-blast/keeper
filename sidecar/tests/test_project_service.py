@@ -18,6 +18,7 @@ from keeper_engine.mapper.pk_state_mapper import PkStateMapper
 from keeper_engine.mapper.project_mapper import ProjectMapper
 from keeper_engine.mapper.project_photo_mapper import ProjectPhotoMapper
 from keeper_engine.response.assess_response import AssessResponse, SurvivorEntry
+from keeper_engine.response.common import PhotoError
 from keeper_engine.response.group_response import GroupResponse
 from keeper_engine.response.score_response import ScoreResponse
 from keeper_engine.service.pk_service import PkService
@@ -61,8 +62,30 @@ class FakeScoring:
         return ScoreResponse(group_id=req.group_id, scores=scores, pk=pk, n=3, errors=[])
 
 
-@pytest.fixture
-def svc(tmp_path):
+class FakeAssessLastFails:
+    """组内最后一张层①失败（记入 errors、不在 scores/survivors）；其余正常。"""
+
+    def assess(self, req) -> AssessResponse:
+        paths = [p.path for p in req.photos]
+        ok, bad = paths[:-1], paths[-1]
+        scores = [LocalScore(path=p, score=70.0) for p in ok]
+        survivors = [SurvivorEntry(path=p, score=70.0, origin=PkOrigin.PASSED) for p in ok]
+        return AssessResponse(group_id=req.group_id, scores=scores, survivors=survivors,
+                              n=3, m=5, errors=[PhotoError(path=bad, error="ValueError: 读图失败")])
+
+
+class FakeScoringLastFails:
+    """survivors 里最后一张层②失败（记入 errors、不在 pk）；第一张通过。"""
+
+    def score(self, req) -> ScoreResponse:
+        ok, bad = req.photos[:-1], req.photos[-1]
+        scores = [Score(path=p, score=80.0, reason="好", flaws="") for p in ok]
+        pk = [PkEntry(path=ok[0], origin=PkOrigin.PASSED, score=80.0, reason="好")] if ok else []
+        return ScoreResponse(group_id=req.group_id, scores=scores, pk=pk, n=3,
+                             errors=[PhotoError(path=bad, error="TimeoutError: 网络超时")])
+
+
+def _build_service(tmp_path, assess, scoring):
     settings = Settings(home=tmp_path / "keeper", output_root=tmp_path / "out", geocode_enabled=False)
     db = Database(settings)
     db.create_all()
@@ -71,10 +94,15 @@ def svc(tmp_path):
     pk = PkService(photos, pk_mapper)
     service = ProjectService(
         ProjectMapper(db), photos, PhotoGroupMapper(db), pk_mapper,
-        FakeGrouping(), FakeAssess(), FakeScoring(), pk,
+        FakeGrouping(), assess, scoring, pk,
         WorkspaceService(), GeocodeClient(settings, GeocodeCacheMapper(db)), settings,
     )
     return service, settings
+
+
+@pytest.fixture
+def svc(tmp_path):
+    return _build_service(tmp_path, FakeAssess(), FakeScoring())
 
 
 def _make_source(tmp_path, n: int):
@@ -208,6 +236,43 @@ def test_recursive_import_uuid_rename_and_structured_restore(svc, tmp_path):
     out = settings.output_root / "嵌套"
     restored = {p.relative_to(out).as_posix() for p in out.rglob("*.jpg")}
     assert restored and restored <= {"top.jpg", "day1/a.jpg", "day2/scene/b.jpg"}
+
+
+def test_layer1_failure_surfaces_and_persists_assess_error(tmp_path):
+    """层①单张失败：该张写入 assess_error 并透出到 PhotoView，且退出重读仍在。"""
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 4)  # g1 = 前两张
+    project = service.create("层一失败", str(src))
+    service.group(project.id)
+
+    gd = service.assess_group(project.id, "g1")
+    failed = [p for p in gd.photos if p.assess_error]
+    assert len(failed) == 1
+    assert "读图失败" in failed[0].assess_error
+    assert failed[0].local_score is None  # 层①失败没有分
+    assert failed[0].selection == Selection.DISCARDED.value
+    # 成功的图无错误
+    assert all(p.assess_error is None for p in gd.photos if p.id != failed[0].id)
+
+    # 落库持久：重新读取仍带错误
+    reread = service.get_group_detail(project.id, "g1")
+    assert any(p.assess_error and "读图失败" in p.assess_error for p in reread.photos)
+
+
+def test_layer2_failure_surfaces_assess_error(tmp_path):
+    """层②单张失败：该 survivor 写入 assess_error，最终未通过。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoringLastFails())
+    src = _make_source(tmp_path, 4)
+    project = service.create("层二失败", str(src))
+    service.group(project.id)
+
+    gd = service.assess_group(project.id, "g1")
+    failed = [p for p in gd.photos if p.assess_error]
+    assert len(failed) == 1
+    assert "网络超时" in failed[0].assess_error
+    assert failed[0].local_score == 70.0  # 层①有分
+    assert failed[0].llm_score is None     # 层②失败没有分
+    assert failed[0].selection == Selection.DISCARDED.value
 
 
 def test_manual_selection_override(svc, tmp_path):

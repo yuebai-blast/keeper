@@ -83,6 +83,13 @@ class ProjectPhoto(SQLModel, table=True):
         sa_column_kwargs={"comment": "层② 修图建议：能修怎么修 / 修不了或不划算的原因"},
     )
 
+    # 评测失败原因：层①或层②单张评测失败时写入（null=正常）。仅用于向用户透出「评测失败」，
+    # 不改变去留行为（失败图照旧没分、最终进未通过区）。
+    assess_error: str | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "层①/层②评测失败原因（null=正常；非空=该张评测失败，向用户透出）"},
+    )
+
     # 漏斗/用户裁决
     origin: str | None = Field(
         default=None,

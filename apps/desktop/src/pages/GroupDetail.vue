@@ -110,13 +110,17 @@ function rescue(p: PhotoView) {
       <h2 class="sect">未通过 <small>{{ failed.length }}</small></h2>
       <p v-if="!failed.length" class="empty">没有被淘汰的照片。</p>
       <div class="cards">
-        <article v-for="p in failed" :key="p.id" class="pcard out" :class="{ rescued: p.rescued }">
+        <article v-for="p in failed" :key="p.id" class="pcard out" :class="{ rescued: p.rescued, failed: !!p.assess_error }">
           <figure>
             <img :src="thumbnailUrl(p.workspace_path, 512)" loading="lazy" alt="" />
             <figcaption>{{ basename(p.filename) }}</figcaption>
-            <span v-if="p.rescued" class="rtag">已救回</span>
+            <span v-if="p.assess_error" class="etag">评测失败</span>
+            <span v-else-if="p.rescued" class="rtag">已救回</span>
           </figure>
           <div class="body">
+            <p v-if="p.assess_error" class="eerr" :title="p.assess_error">
+              评测失败：{{ p.assess_error }}
+            </p>
             <PhotoStats :photo="p" />
             <div class="ops">
               <button class="btn btn--ghost" @click="rescue(p)">{{ p.rescued ? "取消救回" : "救回进 PK" }}</button>
@@ -177,6 +181,17 @@ function rescue(p: PhotoView) {
 .pcard.kept { border-left-color: var(--green); }
 .pcard.out { opacity: 0.92; }
 .pcard.rescued { border-left-color: var(--amber); opacity: 1; }
+.pcard.failed { border-left-color: var(--red); opacity: 1; }
+.etag {
+  position: absolute; top: 8px; left: 8px;
+  font-family: var(--font-mono); font-size: 10.5px;
+  color: #fff; background: var(--red);
+  padding: 2px 8px; border-radius: 5px;
+}
+.eerr {
+  margin: 0; color: var(--red); font-family: var(--font-mono); font-size: 12px;
+  word-break: break-all;
+}
 .pcard figure { margin: 0; position: relative; flex: none; width: 200px; }
 .pcard img { width: 200px; height: 150px; object-fit: cover; border-radius: 8px; background: var(--surface-2); display: block; }
 .pcard figcaption { margin-top: 5px; font-size: 11px; color: var(--ink-faint); font-family: var(--font-mono); word-break: break-all; }

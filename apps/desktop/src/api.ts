@@ -297,6 +297,7 @@ export interface PhotoView {
   origin: "passed" | "quota_fill" | null;
   selection: Selection | null;
   rescued: boolean;
+  assess_error: string | null; // 层①/层②评测失败原因（null=正常）
 }
 
 /** PK 进度视图。current 为当前一对的 workspace 路径。 */

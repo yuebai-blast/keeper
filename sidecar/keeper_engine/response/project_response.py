@@ -78,6 +78,7 @@ class PhotoView(BaseModel):
     origin: str | None = None
     selection: str | None = None
     rescued: bool = False
+    assess_error: str | None = None  # 层①/层②评测失败原因（null=正常）
 
 
 class PkView(BaseModel):
