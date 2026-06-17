@@ -46,3 +46,19 @@ run = "uv run ruff check ."
 description = "对单张本地图片跑层①评分并打印明细（调试/标定用）：mise run localscore -- /path/to/img.jpg"
 dir = "sidecar"
 run = "uv run python devtools/localscore.py"
+
+[tasks.bundle-sidecar]
+description = "用 PyInstaller 把 sidecar 冻结成单文件可执行（产物 sidecar/dist/keeper-sidecar）"
+dir = "sidecar"
+run = "uv run pyinstaller keeper-sidecar.spec --noconfirm --clean"
+
+[tasks.stage-sidecar]
+description = "把 PyInstaller 单文件产物按 Rust target triple 命名放到 Tauri binaries/ 目录"
+dir = "."
+run = """
+TRIPLE=$(rustc -vV | sed -n 's/host: //p' | tr -d '\\n')
+mkdir -p apps/desktop/src-tauri/binaries
+EXT=""
+if [ "$OS" = "Windows_NT" ]; then EXT=".exe"; fi
+cp "sidecar/dist/keeper-sidecar$EXT" "apps/desktop/src-tauri/binaries/keeper-sidecar-$TRIPLE$EXT"
+"""
