@@ -3,10 +3,12 @@
 模型未就绪（预热中/失败）直接抛 MODEL_NOT_READY，不傻等也不假装健康；
 单张数据错误（文件损坏等）记入 errors、不中断；任一张 VisionUnavailable → 整体 MODEL_NOT_READY。
 
-并发：逐张评分用 ThreadPoolExecutor 并行（默认 local_concurrency=2）。torch / onnxruntime 的
-推理在 C++ 段释放 GIL，多线程能拿到真实收益。onnxruntime InferenceSession.run 与 torch 的
-no-grad 前向均为只读推理、可并发调用，故不在 VisionClient 内加锁（如未来换用非线程安全后端，
-再就该次推理加最小锁）。结果按输入下标回填，保证与输入同序（survivors/排序不依赖完成顺序）。
+并发：逐张评分用 ThreadPoolExecutor，并发度由 local_concurrency 决定，**默认 1=串行**。
+CPU/MPS 上 torch/onnxruntime 已用 intra-op 多线程吃满核，上层再并发多张图无真实收益、只增
+峰值内存与抖动（参考 pianke：MPS/CPU 固定单线程最稳），故默认串行；仅 CUDA 等场景才值得调大。
+若开并发：onnxruntime / DINOv2 的 no-grad 前向是只读推理可并发，但 pyiqa（尤其 topiq_nr-face
+内部的 facexlib face_helper）有非线程安全的共享可变状态——这由 VisionClient 的 per-model 锁兜底。
+结果按输入下标回填，保证与输入同序（survivors/排序不依赖完成顺序）。
 """
 
 from __future__ import annotations

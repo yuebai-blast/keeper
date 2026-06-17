@@ -45,9 +45,11 @@ class Settings(BaseSettings):
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     ark_model: str = ""
     ark_concurrency: int = 4
-    # 层① 本地评分组内并发度（逐张并行；torch/onnxruntime 推理释放 GIL，可获真实收益）。
-    # 默认保守为 2，可经 KEEPER_LOCAL_CONCURRENCY 在真实机器上标定。
-    local_concurrency: int = 2
+    # 层① 本地评分组内并发度（逐张并行）。默认 1=串行：CPU/MPS 上 torch/onnxruntime 已用
+    # intra-op 多线程吃满核，再在上层并发多张图无真实收益，只增峰值内存与抖动（参考 pianke
+    # 经验：MPS/CPU 固定单线程最稳）。仅 CUDA 等场景才值得经 KEEPER_LOCAL_CONCURRENCY 调大；
+    # 并发开启时 pyiqa 推理的线程安全已由 VisionClient 的 per-model 锁兜底。
+    local_concurrency: int = 1
     # 火山「管理面 OpenAPI」地域：仅用于 AK/SK 调 ListFoundationModels 拉取可选模型列表（自用版便利功能）；
     # 与推理用的 ARK_API_KEY 是两套鉴权。当前火山方舟管理面仅 cn-beijing。
     volc_region: str = "cn-beijing"

@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -64,6 +65,11 @@ class VisionClient:
         self._topiq = None
         self._topiq_face = None
         self._clipiqa = None
+        # pyiqa 模型自身非线程安全（topiq_nr-face 内部 facexlib FaceRestoreHelper 把每次调用的
+        # 中间结果挂在实例属性上）。层① 用线程池并发逐张评分，同一模型的并发调用会竞争这份共享
+        # 可变状态导致崩溃，故每个 pyiqa 模型配一把锁，调用时串行化（不同模型间仍可并行）。
+        self._pyiqa_locks: dict[int, threading.Lock] = {}
+        self._pyiqa_locks_guard = threading.Lock()
 
     # ── 启动期加载 ────────────────────────────────────────────────────────
 
@@ -252,12 +258,18 @@ class VisionClient:
         out.thumbnail((PYIQA_MAX_SIDE, PYIQA_MAX_SIDE), Image.Resampling.LANCZOS)
         return out
 
+    def _pyiqa_lock(self, model) -> threading.Lock:
+        """取某个 pyiqa 模型对应的锁（按实例惰性建一把），用于并发下串行化其推理。"""
+        with self._pyiqa_locks_guard:
+            return self._pyiqa_locks.setdefault(id(model), threading.Lock())
+
     def _run_pyiqa(self, model, label: str, img: Image.Image) -> float:
         if model is None:
             raise VisionUnavailable(f"{label}未加载")
         import torch
 
-        with torch.no_grad():
+        # 同一 pyiqa 模型的调用必须串行：其内部（如 facexlib face_helper）有非线程安全的共享状态。
+        with self._pyiqa_lock(model), torch.no_grad():
             score = model(self._resize_for_pyiqa(img))
         return float(score.item() if hasattr(score, "item") else score)
 
