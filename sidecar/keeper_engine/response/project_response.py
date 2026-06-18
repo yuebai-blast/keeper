@@ -116,3 +116,18 @@ class CompleteResponse(BaseModel):
 
     output_dir: str
     kept_count: int
+
+
+class AssessProgress(BaseModel):
+    """评测实时进度（内存侧信道，非持久化）。
+
+    组级（group_index/group_count）+ 照片级（phase/done/total）两层：
+    一键通过两层都用，单组评测只用照片级（组级恒为 1/1）。
+    """
+
+    phase: str            # 见 AssessPhase（IDLE/LAYER1/LAYER2/DONE）
+    done: int             # 当前阶段已处理张数
+    total: int            # 当前阶段总张数
+    group_index: int      # 当前第几组（1-based）；空闲为 0
+    group_count: int      # 本轮总组数；空闲为 0
+    group_key: str | None  # 当前正在评测的组 key（空闲为 None）
