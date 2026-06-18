@@ -3,6 +3,7 @@
 import { computed, onMounted, ref } from "vue";
 import { thumbnailUrl, type PhotoView } from "../api";
 import Arena from "../components/Arena.vue";
+import MetricLegend from "../components/MetricLegend.vue";
 import PhotoStats from "../components/PhotoStats.vue";
 import { useEngineStore } from "../stores/engine";
 import { useProjectsStore } from "../stores/projects";
@@ -92,6 +93,7 @@ function rescue(p: PhotoView) {
           重试全部失败（{{ group.group.failed_count }}）
         </button>
         <span class="grow" />
+        <MetricLegend />
         <button class="btn btn--keep" :disabled="blocked" @click="store.confirmGroup(pid, gk)">
           {{ group.group.status === "CONFIRMED" ? "✓ 已确认（可再改）" : "确认本组" }}
         </button>
