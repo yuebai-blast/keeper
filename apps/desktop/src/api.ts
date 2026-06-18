@@ -188,6 +188,15 @@ export interface Penalty {
   points: number;
 }
 
+/** 主脸人脸信号（与 sidecar FaceDetail 对齐）。无脸时 count=0、其余为 null。 */
+export interface FaceDetail {
+  count: number;
+  main_area_ratio: number | null;
+  main_det_score: number | null;
+  main_sharpness: number | null;
+  main_eye_ear: number | null;
+}
+
 /** 层① 单张评分明细（与 sidecar ScoreDetail 对齐，字段供前端透明展示）。 */
 export interface ScoreDetail {
   base: number;
@@ -201,6 +210,7 @@ export interface ScoreDetail {
   contrast: number;
   underexposed_ratio: number;
   overexposed_ratio: number;
+  face: FaceDetail | null;
   penalties: Penalty[];
 }
 
