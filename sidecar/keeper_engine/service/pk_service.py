@@ -18,8 +18,10 @@ state_json 结构：
 
 from __future__ import annotations
 
+from ..enumeration.biz_code import BizCode
 from ..enumeration.pk_outcome import PkOutcome
 from ..enumeration.selection import Selection
+from ..exception.errors import BizException
 from ..mapper.pk_state_mapper import PkStateMapper
 from ..mapper.project_photo_mapper import ProjectPhotoMapper
 from ..response.project_response import PkView
@@ -39,6 +41,8 @@ class PkService:
 
     def start(self, project_id: int, group_key: str, pool: list[str], restart: bool) -> PkView:
         """开始或恢复 PK。有未完成进度且非 restart → 恢复；否则按 pool 重新开局。"""
+        if self._photos.unresolved_failures(project_id, group_key):
+            raise BizException(BizCode.GROUP_HAS_UNRESOLVED_FAILURES)
         existing = self._pk.get(project_id, group_key)
         if existing and not existing.state_json.get("done") and not restart:
             return self._view(existing.state_json)

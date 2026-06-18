@@ -6,6 +6,7 @@ from sqlmodel import delete, select
 
 from ..config.database import Database
 from ..entity.project_photo import ProjectPhoto
+from ..enumeration.assess_status import AssessStatus
 from ..enumeration.selection import Selection
 
 
@@ -32,6 +33,19 @@ class ProjectPhotoMapper:
                 ProjectPhoto.group_key == group_key,
             )
             return list(session.exec(stmt.order_by(ProjectPhoto.id)))
+
+    def unresolved_failures(self, project_id: int, group_key: str) -> list[ProjectPhoto]:
+        """该组里「评测失败且未被忽略」的照片（用于阻塞裁决）。"""
+        with self._db.session() as session:
+            stmt = select(ProjectPhoto).where(
+                ProjectPhoto.project_id == project_id,
+                ProjectPhoto.group_key == group_key,
+                ProjectPhoto.assess_status.in_(
+                    [AssessStatus.LAYER1_FAILED.value, AssessStatus.LAYER2_FAILED.value]
+                ),
+                ProjectPhoto.assess_error_ignored == False,  # noqa: E712
+            )
+            return list(session.exec(stmt))
 
     def kept_of(self, project_id: int) -> list[ProjectPhoto]:
         """该项目所有 selection=kept 的照片（用于最终归档）。"""

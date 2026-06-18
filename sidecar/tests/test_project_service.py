@@ -21,12 +21,16 @@ from keeper_engine.response.assess_response import AssessResponse, SurvivorEntry
 from keeper_engine.response.common import PhotoError
 from keeper_engine.response.group_response import GroupResponse
 from keeper_engine.response.score_response import ScoreResponse
+from keeper_engine.service.funnel_service import FunnelService
+from keeper_engine.service.params_service import ParamsService
 from keeper_engine.service.pk_service import PkService
 from keeper_engine.service.project_service import ProjectService
+from keeper_engine.service.ranking_service import RankingService
 from keeper_engine.service.workspace_service import WorkspaceService
 from keeper_engine.vo.group import Group
 from keeper_engine.vo.local_score import LocalScore
 from keeper_engine.vo.pk import PkEntry
+from keeper_engine.request.project_request import SelectionChange
 from keeper_engine.vo.score import Score
 
 
@@ -54,10 +58,14 @@ class FakeAssess:
 
 
 class FakeScoring:
-    """层②：只让每组第一张通过（pk），其余淘汰——产出有通过有未通过。"""
+    """层②：第一张给高分（≥60），其余给低分（<60）；漏斗保底数 n 决定最终通过数。
+    小组（size≤n）时所有照片仍全通（巧妇难为无米之炊），需用较大源（size>n）测淘汰。"""
 
     def score(self, req) -> ScoreResponse:
-        scores = [Score(path=p, score=80.0, reason="好", flaws="") for p in req.photos]
+        scores = [
+            Score(path=p, score=80.0 if i == 0 else 50.0, reason="好", flaws="")
+            for i, p in enumerate(req.photos)
+        ]
         pk = [PkEntry(path=req.photos[0], origin=PkOrigin.PASSED, score=80.0, reason="好")]
         return ScoreResponse(group_id=req.group_id, scores=scores, pk=pk, n=3, errors=[])
 
@@ -72,6 +80,26 @@ class FakeAssessLastFails:
         survivors = [SurvivorEntry(path=p, score=70.0, origin=PkOrigin.PASSED) for p in ok]
         return AssessResponse(group_id=req.group_id, scores=scores, survivors=survivors,
                               n=3, m=5, errors=[PhotoError(path=bad, error="ValueError: 读图失败")])
+
+
+class CountingAssess:
+    """记录每次被评测的 path，验证「不重复评分」。可指定某些 path 失败。"""
+
+    def __init__(self, fail_paths=()):
+        self.fail = set(fail_paths)
+        self.scored: list[str] = []
+
+    def assess(self, req):
+        ok, errs = [], []
+        for ref in req.photos:
+            self.scored.append(ref.path)
+            if ref.path in self.fail:
+                errs.append(PhotoError(path=ref.path, error="ValueError: 读图失败"))
+            else:
+                ok.append(LocalScore(path=ref.path, score=70.0))
+        survivors = [SurvivorEntry(path=s.path, score=70.0, origin=PkOrigin.PASSED) for s in ok]
+        return AssessResponse(group_id=req.group_id, scores=ok, survivors=survivors,
+                              n=3, m=5, errors=errs)
 
 
 class FakeScoringLastFails:
@@ -92,9 +120,13 @@ def _build_service(tmp_path, assess, scoring):
     photos = ProjectPhotoMapper(db)
     pk_mapper = PkStateMapper(db)
     pk = PkService(photos, pk_mapper)
+    funnel = FunnelService()
+    params = ParamsService()
+    ranking = RankingService(funnel=FunnelService())
     service = ProjectService(
         ProjectMapper(db), photos, PhotoGroupMapper(db), pk_mapper,
         FakeGrouping(), assess, scoring, pk,
+        funnel, params, ranking,
         WorkspaceService(), GeocodeClient(settings, GeocodeCacheMapper(db)), settings,
     )
     return service, settings
@@ -170,7 +202,8 @@ def test_delete_missing_project_rejected(svc):
 
 def test_full_flow_to_completion(svc, tmp_path):
     service, settings = svc
-    src = _make_source(tmp_path, 4)
+    # 用 8 张：FakeGrouping 各给 g1/g2 各 4 张，n=3 < 4 使漏斗能淘汰低分（50.0）张。
+    src = _make_source(tmp_path, 8)
     project = service.create("流程", str(src))
     pid = project.id
 
@@ -178,10 +211,10 @@ def test_full_flow_to_completion(svc, tmp_path):
     assert len(detail.groups) == 2
     assert detail.project.status == "SELECTING"
 
-    # 评测一组：初始化去留（每组第一张通过，其余未通过）
+    # 评测一组：初始化去留（漏斗保底 n=3，第一张 80.0 通过 + 兜底 2 张 50.0，共 3 KEPT，1 DISCARDED）
     gd = service.assess_group(pid, "g1")
     assert gd.group.status == "ASSESSED"
-    assert sum(1 for p in gd.photos if p.selection == Selection.KEPT.value) == 1
+    assert sum(1 for p in gd.photos if p.selection == Selection.KEPT.value) == 3
     assert any(p.selection == Selection.DISCARDED.value for p in gd.photos)
     assert all(p.local_score == 70.0 for p in gd.photos)  # 层①落库
 
@@ -195,12 +228,12 @@ def test_full_flow_to_completion(svc, tmp_path):
     after = service.get_detail(pid)
     assert all(g.status == "CONFIRMED" for g in after.groups)
 
-    # 完成：归档「通过」到输出目录 + 删 workspace
+    # 完成：归档「通过」到输出目录 + 删 workspace（两组各 3 张通过，共 6 张）
     res = service.complete(pid)
     out = settings.output_root / "流程"
     assert res.output_dir == str(out)
-    assert res.kept_count == 2  # 两组各 1 张通过
-    assert out.is_dir() and len(list(out.glob("*.jpg"))) == 2
+    assert res.kept_count == 6  # 两组各 3 张通过（漏斗保底 n=3）
+    assert out.is_dir() and len(list(out.glob("*.jpg"))) == 6
     assert not (settings.workspace_dir / "流程").exists()  # workspace 已清理
     assert service.get_detail(pid).project.status == "COMPLETED"
 
@@ -239,9 +272,10 @@ def test_recursive_import_uuid_rename_and_structured_restore(svc, tmp_path):
 
 
 def test_layer1_failure_surfaces_and_persists_assess_error(tmp_path):
-    """层①单张失败：该张写入 assess_error 并透出到 PhotoView，且退出重读仍在。"""
+    """层①单张失败：该张写入 assess_error 并透出到 PhotoView，且退出重读仍在。
+    用 8 张：g1=4 张（3 好 + 1 失败），n=3，好图足够填满 kept，失败图（0 分）被比下去 DISCARDED。"""
     service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
-    src = _make_source(tmp_path, 4)  # g1 = 前两张
+    src = _make_source(tmp_path, 8)
     project = service.create("层一失败", str(src))
     service.group(project.id)
 
@@ -260,9 +294,10 @@ def test_layer1_failure_surfaces_and_persists_assess_error(tmp_path):
 
 
 def test_layer2_failure_surfaces_assess_error(tmp_path):
-    """层②单张失败：该 survivor 写入 assess_error，最终未通过。"""
+    """层②单张失败：该 survivor 写入 assess_error，最终未通过。
+    用 8 张：g1=4 张（3 好 + 1 层②失败），n=3，好图足够填满 kept，失败图（0 分）被比下去 DISCARDED。"""
     service, _ = _build_service(tmp_path, FakeAssess(), FakeScoringLastFails())
-    src = _make_source(tmp_path, 4)
+    src = _make_source(tmp_path, 8)
     project = service.create("层二失败", str(src))
     service.group(project.id)
 
@@ -277,13 +312,12 @@ def test_layer2_failure_surfaces_assess_error(tmp_path):
 
 def test_manual_selection_override(svc, tmp_path):
     service, _ = svc
-    src = _make_source(tmp_path, 4)
+    # 用 8 张：g1=4 张，n=3，FakeScoring 使第一张 80.0、其余 50.0 → 3 KEPT、1 DISCARDED
+    src = _make_source(tmp_path, 8)
     project = service.create("改判", str(src))
     service.group(project.id)
     gd = service.assess_group(project.id, "g1")
     discarded = next(p for p in gd.photos if p.selection == Selection.DISCARDED.value)
-
-    from keeper_engine.request.project_request import SelectionChange
 
     gd2 = service.update_selection(
         project.id, "g1",
@@ -291,3 +325,142 @@ def test_manual_selection_override(svc, tmp_path):
     )
     flipped = next(p for p in gd2.photos if p.id == discarded.id)
     assert flipped.selection == Selection.KEPT.value and flipped.rescued is True
+
+
+def test_layer1_failure_sets_status_and_zero_score_discarded(tmp_path):
+    # 用 8 张：g1=4 张（3 好 + 1 失败），n=3，好图足够填满 kept，失败图（0 分）排第 4 被淘汰
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 8)
+    project = service.create("L1", str(src))
+    service.group(project.id)
+    gd = service.assess_group(project.id, "g1")
+
+    failed = [p for p in gd.photos if p.assess_status == "LAYER1_FAILED"]
+    assert len(failed) == 1
+    assert failed[0].local_score is None
+    assert failed[0].selection == Selection.DISCARDED.value
+    assert all(p.assess_status == "SUCCESS" for p in gd.photos if p.id != failed[0].id)
+
+
+def test_layer2_failure_sets_status(tmp_path):
+    # 用 8 张：g1=4 张（3 好 + 1 层②失败），n=3，好图足够填满 kept，失败图（0 分）排第 4 被淘汰
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoringLastFails())
+    src = _make_source(tmp_path, 8)
+    project = service.create("L2", str(src))
+    service.group(project.id)
+    gd = service.assess_group(project.id, "g1")
+
+    failed = [p for p in gd.photos if p.assess_status == "LAYER2_FAILED"]
+    assert len(failed) == 1
+    assert failed[0].local_score == 70.0
+    assert failed[0].llm_score is None
+    assert failed[0].selection == Selection.DISCARDED.value
+
+
+def test_retry_single_recovers_and_does_not_rescore_others(tmp_path):
+    # g1 = 前两张；第二张层①失败
+    failing = CountingAssess()
+    service, _ = _build_service(tmp_path, failing, FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("retry", str(src))
+    service.group(project.id)
+    # 锁定 g1 第二张 workspace 路径作为失败目标
+    g1 = service._photos.by_group(project.id, "g1")
+    bad = g1[-1]
+    failing.fail = {bad.workspace_path}
+
+    gd = service.assess_group(project.id, "g1")
+    assert any(p.assess_status == "LAYER1_FAILED" for p in gd.photos)
+    failing.fail = set()          # 这次重试会成功
+    failing.scored.clear()        # 只统计重试阶段的评分
+
+    gd2 = service.retry_group(project.id, "g1", photo_id=bad.id)
+    assert failing.scored == [bad.workspace_path]   # 只重评失败那张，别人不重评
+    recovered = next(p for p in gd2.photos if p.id == bad.id)
+    assert recovered.assess_status == "SUCCESS"
+    assert recovered.local_score == 70.0
+
+
+def test_retry_ignored_photo_is_noop_and_keeps_confirmed(tmp_path):
+    """已忽略的失败图被单张重试时应是 no-op：不重评、不把已确认组降级/重置裁决。"""
+    failing = CountingAssess()
+    service, _ = _build_service(tmp_path, failing, FakeScoring())
+    src = _make_source(tmp_path, 8)  # g1 = 前 4 张
+    project = service.create("ign-retry", str(src))
+    service.group(project.id)
+    g1 = service._photos.by_group(project.id, "g1")
+    bad = g1[-1]
+    failing.fail = {bad.workspace_path}
+
+    service.assess_group(project.id, "g1")
+    service.ignore_failures(project.id, "g1")          # 忽略失败 → 解阻塞
+    gd = service.confirm_group(project.id, "g1")        # 确认本组
+    assert gd.group.status == "CONFIRMED"
+
+    failing.fail = set()
+    failing.scored.clear()
+    gd2 = service.retry_group(project.id, "g1", photo_id=bad.id)
+    assert failing.scored == []                         # 已忽略图不被重评
+    assert gd2.group.status == "CONFIRMED"              # 组未被降级/重算
+
+
+def test_ignore_failures_keeps_status_but_marks_ignored(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("ign", str(src))
+    service.group(project.id)
+    service.assess_group(project.id, "g1")
+
+    gd = service.ignore_failures(project.id, "g1")
+    failed = [p for p in gd.photos if p.assess_status == "LAYER1_FAILED"]
+    assert failed and all(p.assess_error_ignored for p in failed)
+    # ignore 只置 ignored 标志，不改 assess_status——失败图状态仍为 LAYER1_FAILED
+    assert all(p.assess_status == "LAYER1_FAILED" for p in failed)
+
+
+def test_retry_nonfailed_photo_id_is_noop(tmp_path):
+    """对一张已 SUCCESS 的图调 retry_group(photo_id=...)：不被重评，状态不变。"""
+    failing = CountingAssess()
+    service, _ = _build_service(tmp_path, failing, FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("retry-noop", str(src))
+    service.group(project.id)
+
+    # 首评：全部成功（fail 集合为空）
+    service.assess_group(project.id, "g1")
+    g1 = service._photos.by_group(project.id, "g1")
+    success_photo = next(p for p in g1 if p.assess_status == "SUCCESS")
+
+    # 清除计数，对 SUCCESS 图发起单张重试
+    failing.scored.clear()
+    gd = service.retry_group(project.id, "g1", photo_id=success_photo.id)
+
+    # 该 SUCCESS 图不应触发重评
+    assert failing.scored == []
+    # 状态仍为 SUCCESS
+    after = next(p for p in gd.photos if p.id == success_photo.id)
+    assert after.assess_status == "SUCCESS"
+
+
+def test_unresolved_failure_blocks_confirm_and_selection(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("blk", str(src))
+    service.group(project.id)
+    gd = service.assess_group(project.id, "g1")
+    assert gd.group.failed_count == 1
+
+    ok = next(p for p in gd.photos if p.assess_status == "SUCCESS")
+    for call in (
+        lambda: service.confirm_group(project.id, "g1"),
+        lambda: service.update_selection(project.id, "g1",
+                                         [SelectionChange(photo_id=ok.id, selection=Selection.DISCARDED)]),
+        lambda: service.confirm_all(project.id),
+    ):
+        with pytest.raises(BizException) as ei:
+            call()
+        assert ei.value.biz == BizCode.GROUP_HAS_UNRESOLVED_FAILURES
+
+    # 忽略后解锁
+    service.ignore_failures(project.id, "g1")
+    assert service.confirm_group(project.id, "g1").group.status == "CONFIRMED"

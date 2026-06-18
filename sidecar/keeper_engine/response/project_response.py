@@ -52,6 +52,7 @@ class GroupSummary(BaseModel):
     status: str
     photo_count: int
     kept_count: int
+    failed_count: int = 0  # 评测失败且未忽略的张数（>0 时本组裁决被锁）
     photo_paths: list[str] = Field(default_factory=list)  # 组内照片的 workspace 路径（供列表页缩略图预览）
     photo_names: list[str] = Field(default_factory=list)  # 与 photo_paths 平行：原始相对路径（带原文件名，供展示）
 
@@ -78,7 +79,9 @@ class PhotoView(BaseModel):
     origin: str | None = None
     selection: str | None = None
     rescued: bool = False
-    assess_error: str | None = None  # 层①/层②评测失败原因（null=正常）
+    assess_status: str = "NOT_ASSESSED"   # 评测状态（见 AssessStatus）
+    assess_error: str | None = None        # 层①/层②评测失败原因（null=正常）
+    assess_error_ignored: bool = False     # 用户是否忽略该失败
 
 
 class PkView(BaseModel):

@@ -5,8 +5,10 @@ import pytest
 from keeper_engine.config.database import Database
 from keeper_engine.config.settings import Settings
 from keeper_engine.entity.project_photo import ProjectPhoto
+from keeper_engine.enumeration.biz_code import BizCode
 from keeper_engine.enumeration.pk_outcome import PkOutcome
 from keeper_engine.enumeration.selection import Selection
+from keeper_engine.exception.errors import BizException
 from keeper_engine.mapper.pk_state_mapper import PkStateMapper
 from keeper_engine.mapper.project_photo_mapper import ProjectPhotoMapper
 from keeper_engine.service.pk_service import PkService
@@ -107,3 +109,25 @@ def test_single_photo_pool_auto_kept(ctx):
     view = pk.start(PID, GK, ["a"], restart=False)
     assert view.done is True
     assert _selection(photos)["a"] == Selection.KEPT.value
+
+
+def test_pk_start_blocked_by_unresolved_failure(ctx):
+    """存在未忽略的 LAYER1_FAILED 照片时，PkService.start 应抛 GROUP_HAS_UNRESOLVED_FAILURES。"""
+    photos, pk = ctx
+    # 插入一张 LAYER1_FAILED 且未忽略的照片
+    photos.bulk_create([
+        ProjectPhoto(
+            project_id=PID,
+            workspace_path="bad",
+            original_path="bad",
+            original_rel_path="bad",
+            filename="bad",
+            group_key=GK,
+            assess_status="LAYER1_FAILED",
+            assess_error="ValueError: 读图失败",
+            assess_error_ignored=False,
+        )
+    ])
+    with pytest.raises(BizException) as ei:
+        pk.start(PID, GK, ["bad"], restart=False)
+    assert ei.value.biz == BizCode.GROUP_HAS_UNRESOLVED_FAILURES
