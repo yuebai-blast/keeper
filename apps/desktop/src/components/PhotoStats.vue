@@ -15,17 +15,18 @@ const detail = computed(() => props.photo.local_detail);
 const face = computed(() => props.photo.local_detail?.face ?? null);
 // 指标含义图例已抽到页面级的 MetricLegend 组件，这里只展示数值。
 
+// 键与后端 EditVerdict 枚举（SCREAMING_SNAKE_CASE）逐字对齐，改任一端两端同步。
 const VERDICT_LABEL: Record<string, string> = {
-  ready: "开图即用",
-  worth_editing: "值得修",
-  not_worth: "不划算",
-  unfixable: "修不了",
+  READY: "开图即用",
+  WORTH_EDITING: "值得修",
+  NOT_WORTH: "不划算",
+  UNFIXABLE: "修不了",
 };
 const VERDICT_CLASS: Record<string, string> = {
-  ready: "v-ready",
-  worth_editing: "v-worth",
-  not_worth: "v-notworth",
-  unfixable: "v-unfixable",
+  READY: "v-ready",
+  WORTH_EDITING: "v-worth",
+  NOT_WORTH: "v-notworth",
+  UNFIXABLE: "v-unfixable",
 };
 const verdictLabel = computed(() => VERDICT_LABEL[props.photo.llm_editable] ?? "");
 const verdictClass = computed(() => VERDICT_CLASS[props.photo.llm_editable] ?? "");
@@ -98,7 +99,7 @@ const verdictClass = computed(() => VERDICT_CLASS[props.photo.llm_editable] ?? "
 .muted { color: var(--ink-faint); font-family: var(--font-mono); font-size: 11px; }
 .reason { margin: 0; color: var(--ink-dim); line-height: 1.5; }
 .flaws { margin: 0; color: var(--red); font-size: 12px; }
-.advice { margin: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.advice { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .advice-text { color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
 .tag.v-ready { color: var(--green); border-color: var(--green); }
 .tag.v-worth { color: var(--amber-bright); border-color: var(--amber); }
