@@ -403,8 +403,7 @@ class ProjectService:
             if g.status == GroupStatus.PENDING.value:
                 self.assess_group(project_id, g.group_key)  # 可能 503/502 上抛
         for g in self._groups.by_project(project_id):
-            if self._photos.unresolved_failures(project_id, g.group_key):
-                raise BizException(BizCode.GROUP_HAS_UNRESOLVED_FAILURES)
+            self._require_no_unresolved_failures(project_id, g.group_key)
         for g in self._groups.by_project(project_id):
             if g.status != GroupStatus.CONFIRMED.value:
                 g.status = GroupStatus.CONFIRMED.value

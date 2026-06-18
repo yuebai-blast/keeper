@@ -30,6 +30,7 @@ from keeper_engine.service.workspace_service import WorkspaceService
 from keeper_engine.vo.group import Group
 from keeper_engine.vo.local_score import LocalScore
 from keeper_engine.vo.pk import PkEntry
+from keeper_engine.request.project_request import SelectionChange
 from keeper_engine.vo.score import Score
 
 
@@ -318,8 +319,6 @@ def test_manual_selection_override(svc, tmp_path):
     gd = service.assess_group(project.id, "g1")
     discarded = next(p for p in gd.photos if p.selection == Selection.DISCARDED.value)
 
-    from keeper_engine.request.project_request import SelectionChange
-
     gd2 = service.update_selection(
         project.id, "g1",
         [SelectionChange(photo_id=discarded.id, selection=Selection.KEPT, rescued=True)],
@@ -428,7 +427,6 @@ def test_unresolved_failure_blocks_confirm_and_selection(tmp_path):
     gd = service.assess_group(project.id, "g1")
     assert gd.group.failed_count == 1
 
-    from keeper_engine.request.project_request import SelectionChange
     ok = next(p for p in gd.photos if p.assess_status == "SUCCESS")
     for call in (
         lambda: service.confirm_group(project.id, "g1"),
