@@ -86,3 +86,22 @@ def test_layer2_prompt_loads_from_file():
     p = _layer2_prompt()
     assert "0–100" in p and "骨架" in p and "flaws" in p  # 提示词文件读得到、含关键结构
     assert "editable" in p and "edit_advice" in p  # 含新增修图判定字段
+
+
+def test_score_calls_on_progress_per_preview(monkeypatch):
+    from keeper_engine.client.scorer import LocalDirectScorer, Preview
+    from keeper_engine.config.settings import Settings
+    from keeper_engine.vo.score import Score
+
+    scorer = LocalDirectScorer(settings=Settings(geocode_enabled=False))
+    # 避开联网与 key：直接桩掉单张打分与 Ark 客户端构造
+    monkeypatch.setattr(scorer, "_client", lambda model: object())
+    monkeypatch.setattr(
+        scorer, "_score_one",
+        lambda client, model, p: Score(path=p.path, score=70.0, reason="好", flaws=""),
+    )
+    ticks = []
+    previews = [Preview(path=f"p{i}", jpeg=b"x") for i in range(3)]
+    out = scorer.score(previews, "m", on_progress=lambda: ticks.append(1))
+    assert len(out) == 3
+    assert len(ticks) == 3

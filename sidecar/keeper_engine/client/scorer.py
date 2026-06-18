@@ -14,6 +14,7 @@ import base64
 import json
 import os
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
@@ -46,9 +47,15 @@ class Preview:
 
 
 class Scorer(Protocol):
-    """给一组候选预览打 0–100 分，返回与输入同序的 Score。model 为本次使用的大模型 id。"""
+    """给一组候选预览打 0–100 分，返回与输入同序的 Score。model 为本次使用的大模型 id。
 
-    def score(self, previews: list[Preview], model: str) -> list[Score]:
+    on_progress（可选）：每打完一张回调一次，供评测进度逐张推进。
+    """
+
+    def score(
+        self, previews: list[Preview], model: str,
+        on_progress: Callable[[], None] | None = None,
+    ) -> list[Score]:
         ...
 
 
@@ -109,13 +116,23 @@ class LocalDirectScorer:
             raise ScorerError("未指定 Ark 模型 id（请求字段 model 或环境变量 KEEPER_ARK_MODEL）")
         return Ark(api_key=self._load_api_key(), base_url=self._settings.ark_base_url)
 
-    def score(self, previews: list[Preview], model: str) -> list[Score]:
+    def score(
+        self, previews: list[Preview], model: str,
+        on_progress: Callable[[], None] | None = None,
+    ) -> list[Score]:
         if not previews:
             return []
         client = self._client(model)
         workers = max(1, min(self._settings.ark_concurrency, len(previews)))
+
+        def one(p: Preview) -> Score:
+            s = self._score_one(client, model, p)
+            if on_progress is not None:
+                on_progress()  # 每打完一张推进进度（按完成顺序）
+            return s
+
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            return list(ex.map(lambda p: self._score_one(client, model, p), previews))
+            return list(ex.map(one, previews))
 
     def _score_one(self, client: Ark, model: str, preview: Preview) -> Score:
         # 内存低清预览直接 base64 拼成 data URL（火山 Ark「Base64 编码传入」）；照片不出本地、用完即焚。
