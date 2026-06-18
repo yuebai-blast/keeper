@@ -43,7 +43,8 @@ watch(() => props.paths, () => nextTick(measure));
 </script>
 
 <template>
-  <div v-if="paths.length" class="thumbs" @click.stop>
+  <!-- 容器不拦截冒泡：缩略图/展开按钮各自 stop，留白处的点击仍冒泡到卡片以进入分组详情 -->
+  <div v-if="paths.length" class="thumbs">
     <div ref="strip" class="strip" :class="{ collapsed: !expanded }">
       <figure
         v-for="(p, i) in paths"
