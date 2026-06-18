@@ -418,3 +418,28 @@ def test_retry_nonfailed_photo_id_is_noop(tmp_path):
     # 状态仍为 SUCCESS
     after = next(p for p in gd.photos if p.id == success_photo.id)
     assert after.assess_status == "SUCCESS"
+
+
+def test_unresolved_failure_blocks_confirm_and_selection(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("blk", str(src))
+    service.group(project.id)
+    gd = service.assess_group(project.id, "g1")
+    assert gd.group.failed_count == 1
+
+    from keeper_engine.request.project_request import SelectionChange
+    ok = next(p for p in gd.photos if p.assess_status == "SUCCESS")
+    for call in (
+        lambda: service.confirm_group(project.id, "g1"),
+        lambda: service.update_selection(project.id, "g1",
+                                         [SelectionChange(photo_id=ok.id, selection=Selection.DISCARDED)]),
+        lambda: service.confirm_all(project.id),
+    ):
+        with pytest.raises(BizException) as ei:
+            call()
+        assert ei.value.biz == BizCode.GROUP_HAS_UNRESOLVED_FAILURES
+
+    # 忽略后解锁
+    service.ignore_failures(project.id, "g1")
+    assert service.confirm_group(project.id, "g1").group.status == "CONFIRMED"

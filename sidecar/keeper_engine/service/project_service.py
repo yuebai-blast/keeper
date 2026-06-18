@@ -367,6 +367,7 @@ class ProjectService:
         self, project_id: int, group_key: str, changes: list[SelectionChange]
     ) -> GroupDetailResponse:
         """手动改去留 / 标记救回。"""
+        self._require_no_unresolved_failures(project_id, group_key)
         photos = self._photos.by_group(project_id, group_key)
         by_id = {p.id: p for p in photos}
         touched: list[ProjectPhoto] = []
@@ -386,6 +387,7 @@ class ProjectService:
     def confirm_group(self, project_id: int, group_key: str) -> GroupDetailResponse:
         """确认本组（标识，可反复改回）。"""
         group = self._require_group(project_id, group_key)
+        self._require_no_unresolved_failures(project_id, group_key)
         group.status = GroupStatus.CONFIRMED.value
         self._groups.update(group)
         return self.get_group_detail(project_id, group_key)
@@ -400,6 +402,9 @@ class ProjectService:
         for g in self._groups.by_project(project_id):
             if g.status == GroupStatus.PENDING.value:
                 self.assess_group(project_id, g.group_key)  # 可能 503/502 上抛
+        for g in self._groups.by_project(project_id):
+            if self._photos.unresolved_failures(project_id, g.group_key):
+                raise BizException(BizCode.GROUP_HAS_UNRESOLVED_FAILURES)
         for g in self._groups.by_project(project_id):
             if g.status != GroupStatus.CONFIRMED.value:
                 g.status = GroupStatus.CONFIRMED.value
@@ -494,6 +499,10 @@ class ProjectService:
             time_start=group.time_start, time_end=group.time_end, status=group.status,
             photo_count=len(photos),
             kept_count=sum(1 for p in photos if p.selection == Selection.KEPT.value),
+            failed_count=sum(
+                1 for p in photos
+                if p.assess_status in ("LAYER1_FAILED", "LAYER2_FAILED") and not p.assess_error_ignored
+            ),
             photo_paths=[p.workspace_path for p in photos],
             photo_names=[p.original_rel_path or p.filename for p in photos],
         )
@@ -518,3 +527,7 @@ class ProjectService:
         if not group:
             raise BizException(BizCode.GROUP_NOT_FOUND, f"分组不存在：{group_key}")
         return group
+
+    def _require_no_unresolved_failures(self, project_id: int, group_key: str) -> None:
+        if self._photos.unresolved_failures(project_id, group_key):
+            raise BizException(BizCode.GROUP_HAS_UNRESOLVED_FAILURES)
