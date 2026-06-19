@@ -95,10 +95,7 @@ description = "跑官网单测（vitest：下载逻辑纯函数）"
 dir = "apps/website"
 run = "pnpm test"
 
-[tasks.site-deploy]
-description = "构建并部署官网到服务器（rsync over ssh）。先 export KEEPER_SITE_HOST / KEEPER_SITE_PATH"
-dir = "."
-run = """
-mise run site-build
-bash deploy/deploy.sh
-"""
+[tasks.site-image]
+description = "本地构建官网 Docker 镜像（apps/website/Dockerfile，多阶段：node 构建 → nginx 托管）"
+dir = "apps/website"
+run = "docker build -t keeper-website:local ."
