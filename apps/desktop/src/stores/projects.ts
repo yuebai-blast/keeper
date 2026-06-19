@@ -197,7 +197,7 @@ export const useProjectsStore = defineStore("projects", {
       try {
         this.group = await this._withProgress(id, () => retryGroup(id, gk, photoId));
       } catch (e) {
-        this.error = e instanceof Error ? e.message : String(e);
+        this._fail(e); // 与 assess/confirmAll 一致：503(模型未就绪) 经 reportError 触发模型修复页
       } finally {
         this.busy = false;
       }
