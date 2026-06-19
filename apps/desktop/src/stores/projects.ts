@@ -76,7 +76,10 @@ export const useProjectsStore = defineStore("projects", {
           } catch {
             /* 进度是尽力而为的旁路，拉取失败忽略 */
           }
-          await new Promise((r) => setTimeout(r, 400));
+          // 分片睡眠：维持 ~400ms 轮询节奏，但 settle 置 stop 后 ~50ms 内退出，进度条及时清空、不多发请求
+          for (let i = 0; i < 8 && !stop; i++) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
         }
       };
       const polling = poll();
