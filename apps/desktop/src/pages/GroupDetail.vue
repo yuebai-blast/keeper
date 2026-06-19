@@ -8,6 +8,7 @@ import PhotoStats from "../components/PhotoStats.vue";
 import { useEngineStore } from "../stores/engine";
 import { useProjectsStore } from "../stores/projects";
 import { basename, byScoreDesc } from "../util/format";
+import { photoProgressText } from "../util/progress";
 
 const props = defineProps<{ id: string; gk: string }>();
 const store = useProjectsStore();
@@ -29,6 +30,9 @@ const pool = computed(() =>
 );
 const pkInProgress = computed(() => !!group.value?.pk && !group.value.pk.done);
 const blocked = computed(() => (group.value?.group.failed_count ?? 0) > 0);
+const progressText = computed(() =>
+  store.progress ? photoProgressText(store.progress) : "",
+);
 function retryOne(p: PhotoView) { store.retry(pid.value, props.gk, p.id); }
 function ignoreOne(p: PhotoView) { store.ignoreFailures(pid.value, props.gk, p.id); }
 function retryAll() { store.retry(pid.value, props.gk); }
@@ -77,8 +81,17 @@ function rescue(p: PhotoView) {
         <img v-for="p in photos" :key="p.id" :src="thumbnailUrl(p.workspace_path)" loading="lazy" alt="" />
       </div>
       <button class="btn btn--primary lg" :disabled="store.busy || !engine.ready" @click="assess">
-        {{ store.busy ? "评测中（本地 + 大模型）…" : "用模型评测本组" }}
+        {{ store.busy ? "评测中…" : "用模型评测本组" }}
       </button>
+      <div v-if="store.busy && store.progress" class="prog">
+        <div class="prog-text">{{ progressText }}</div>
+        <div class="prog-bar">
+          <div
+            class="prog-fill"
+            :style="{ width: store.progress.total ? `${(store.progress.done / store.progress.total) * 100}%` : '0%' }"
+          />
+        </div>
+      </div>
       <p class="hint">先本地打分筛选，再对入选的调用大模型打分，自动分出「通过 / 未通过」。</p>
     </div>
 
@@ -220,4 +233,9 @@ function rescue(p: PhotoView) {
 .body { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .ops { display: flex; gap: 8px; margin-top: auto; }
 .warn { color: var(--amber-bright); font-family: var(--font-mono); font-size: 12.5px; margin: 0; }
+
+.prog { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 360px; }
+.prog-text { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-dim); }
+.prog-bar { height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.prog-fill { height: 100%; background: var(--amber); transition: width 0.3s ease; }
 </style>

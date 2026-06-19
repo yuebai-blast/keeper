@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from ..client.scorer import Preview, Scorer
 from ..config.settings import Settings
 from ..request.score_request import ScoreRequest
@@ -32,7 +34,9 @@ class ScoringService:
         self._ranking = ranking
         self._settings = settings
 
-    def score(self, req: ScoreRequest) -> ScoreResponse:
+    def score(
+        self, req: ScoreRequest, on_progress: Callable[[], None] | None = None,
+    ) -> ScoreResponse:
         previews: list[Preview] = []
         errors: list[PhotoError] = []
         for p in req.photos:
@@ -44,7 +48,7 @@ class ScoringService:
 
         model = req.model or self._settings.ark_model
         # 大模型不可用抛 ScorerError，由 app 异常处理器统一映射为 SCORER_FAILED（HTTP 200 + ApiResponse）。
-        scores = self._scorer.score(previews, model)
+        scores = self._scorer.score(previews, model, on_progress=on_progress)
 
         n = self._params.compute_n(req.group_total)
         pk_set = self._ranking.assemble_pk_set(req.group_id, scores, n)

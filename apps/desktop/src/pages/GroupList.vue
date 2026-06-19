@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useProjectsStore } from "../stores/projects";
 import { fmtTimeRange } from "../util/format";
+import { photoProgressText } from "../util/progress";
 import GroupThumbs from "../components/GroupThumbs.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 
@@ -31,6 +32,10 @@ const pendingGroups = computed(() =>
 const confirmedGroups = computed(() =>
   (store.detail?.groups ?? []).filter((g) => g.status === "CONFIRMED"),
 );
+const progressText = computed(() =>
+  store.progress ? photoProgressText(store.progress) : "",
+);
+
 // 组序号沿用「在全部分组中的原始次序」，避免两区各自从 1 起造成同号歧义
 const indexOf = (gk: string) =>
   (store.detail?.groups ?? []).findIndex((g) => g.group_key === gk);
@@ -116,6 +121,18 @@ async function doSubmit() {
         提交并完成
       </button>
     </footer>
+    <div v-if="store.busy && store.progress" class="prog">
+      <div class="prog-group" v-if="store.progress.group_count > 1">
+        一键通过中… 第 {{ store.progress.group_index }} / {{ store.progress.group_count }} 组
+      </div>
+      <div class="prog-text">{{ progressText }}</div>
+      <div class="prog-bar">
+        <div
+          class="prog-fill"
+          :style="{ width: store.progress.total ? `${(store.progress.done / store.progress.total) * 100}%` : '0%' }"
+        />
+      </div>
+    </div>
     <p v-if="!store.allConfirmed" class="hint">所有分组都确认后才能提交完成。</p>
 
     <ConfirmDialog
@@ -196,4 +213,10 @@ async function doSubmit() {
 .zone--done { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--line); }
 .zone--done .card { opacity: 0.62; }
 .zone--done .card:hover { opacity: 1; }
+
+.prog { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 360px; }
+.prog-group { font-family: var(--font-mono); font-size: 12.5px; color: var(--amber-bright); }
+.prog-text { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-dim); }
+.prog-bar { height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.prog-fill { height: 100%; background: var(--amber); transition: width 0.3s ease; }
 </style>
