@@ -1,0 +1,17 @@
+# Keeper 官网部署：nginx 托管静态站点，容器内只听 80（明文 HTTP）。
+# HTTPS/TLS 由宿主机上的反向代理或 Cloudflare 终止，容器本身不处理证书。
+#
+# 用法（在服务器上）：
+#   export WEBSITE_TAG=0.1.0        # 要部署的版本（不写默认 latest）
+#   docker compose pull            # 拉取镜像
+#   docker compose up -d           # 启动/更新
+#   docker compose logs -f         # 看日志
+#   docker compose down            # 停止并移除
+services:
+  website:
+    image: ghcr.io/yuebai-blast/keeper-website:${WEBSITE_TAG:-latest}
+    container_name: keeper-website
+    restart: unless-stopped
+    # 只绑本机回环，明文 HTTP 不暴露公网；宿主机反代/Cloudflare 连 127.0.0.1:9001
+    ports:
+      - "127.0.0.1:9001:80"
