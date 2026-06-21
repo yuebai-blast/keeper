@@ -55,6 +55,10 @@ run = "uv run pyinstaller keeper-sidecar.spec --noconfirm --clean"
 [tasks.stage-sidecar]
 description = "把 PyInstaller 单文件产物按 Rust target triple 命名放到 Tauri binaries/ 目录"
 dir = "."
+# 脚本是 bash 语法（$(...)/sed/tr/[ ]），但 mise 在 Windows 默认用 cmd /c 执行，会报
+# 「'TRIPLE' is not recognized」。这里显式钉到 bash（mise 在 Windows 自动优先 Git Bash/MSYS2 的
+# POSIX bash），保证 Mac/Windows 都按 bash 跑。
+shell = "bash -c"
 run = """
 TRIPLE=$(rustc -vV | sed -n 's/host: //p' | tr -d '\\n')
 mkdir -p apps/desktop/src-tauri/binaries
