@@ -12,7 +12,7 @@ jobs:
       matrix:
         include:
           - os: macos-14      # Apple 芯片 (arm64)
-          - os: macos-13      # Intel (x86_64)
+          - os: macos-15-intel  # Intel (x86_64)，macos-13 已于 2025-12 退役，这是 Actions 最后的 x86_64 镜像（支持到 2027-08）
           - os: windows-latest  # Windows (x86_64)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
