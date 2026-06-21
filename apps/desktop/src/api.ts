@@ -3,6 +3,20 @@
 
 const BASE = import.meta.env.VITE_SIDECAR_URL ?? "http://127.0.0.1:8761";
 
+import { invoke } from "@tauri-apps/api/core";
+
+// sidecar 鉴权 token（启动时经 initAuth 从 Rust 取一次）。空串=不发（dev / 非 Tauri 环境）。
+let authToken = "";
+
+/** 启动时取一次 sidecar 鉴权 token（非 Tauri 环境兜底为空=不鉴权）。须在任何请求/缩略图渲染前 await。 */
+export async function initAuth(): Promise<void> {
+  try {
+    authToken = await invoke<string>("get_auth_token");
+  } catch {
+    authToken = ""; // 非 Tauri（纯浏览器）环境：invoke 不可用
+  }
+}
+
 /** 模型加载进度。 */
 export interface Progress {
   current: number; // 正在加载的步骤序号（1-based）
@@ -36,6 +50,7 @@ export const BizCode = {
   SUCCESS: 0,
   INTERNAL_ERROR: 110001,
   VALIDATION_ERROR: 110002,
+  AUTH_FAILED: 110003,
   MODEL_NOT_READY: 210001,
   MODEL_DEPENDENCY_MISSING: 210002,
   SCORER_FAILED: 310001,
@@ -76,13 +91,21 @@ export class ApiError extends Error {
   }
 }
 
+/** 鉴权请求头：有 token 才带 X-Keeper-Token；空则返回空对象（dev 不鉴权）。 */
+function authHeaders(): Record<string, string> {
+  return authToken ? { "X-Keeper-Token": authToken } : {};
+}
+
 /** 解析统一响应：code===0 返回 data，否则抛 ApiError；非 JSON/网络异常兜底为内部错误。 */
 async function unwrap<T>(resp: Response): Promise<T> {
+  if (resp.status === 401) {
+    // sidecar 鉴权失败返回纯 401（非 JSON）；合成 AUTH_FAILED 让前端精确识别而非泛化内部错误。
+    throw new ApiError(BizCode.AUTH_FAILED, "鉴权失败");
+  }
   let body: ApiResponse<T>;
   try {
     body = (await resp.json()) as ApiResponse<T>;
   } catch {
-    // 非 JSON（如框架层 500/404）——兜底成内部错误。
     throw new ApiError(BizCode.INTERNAL_ERROR, `${resp.status} ${resp.statusText}`);
   }
   if (body.code !== BizCode.SUCCESS) {
@@ -92,7 +115,7 @@ async function unwrap<T>(resp: Response): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const resp = await fetch(`${BASE}${path}`);
+  const resp = await fetch(`${BASE}${path}`, { headers: authHeaders() });
   return unwrap<T>(resp);
 }
 
@@ -178,14 +201,14 @@ export interface GroupResponse {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
   return unwrap<T>(resp);
 }
 
 async function del<T>(path: string): Promise<T> {
-  const resp = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  const resp = await fetch(`${BASE}${path}`, { method: "DELETE", headers: authHeaders() });
   return unwrap<T>(resp);
 }
 
@@ -196,7 +219,8 @@ export function groupPhotos(photos: string[]): Promise<GroupResponse> {
 
 /** 缩略图直链（供 <img src>，由 sidecar 解码/缩放，支持 RAW/HEIC）。 */
 export function thumbnailUrl(path: string, size = 256): string {
-  return `${BASE}/thumbnail?path=${encodeURIComponent(path)}&size=${size}`;
+  const base = `${BASE}/thumbnail?path=${encodeURIComponent(path)}&size=${size}`;
+  return authToken ? `${base}&token=${encodeURIComponent(authToken)}` : base;
 }
 
 // ── 层① 本地评分 ──────────────────────────────────────────────────────────
