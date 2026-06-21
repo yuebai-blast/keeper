@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .container import Container
+from .middleware.auth import AuthMiddleware
 from .controller import (
     assess_controller,
     group_controller,
@@ -31,6 +32,12 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # 启动自检日志（非敏感）：确认 Tauri 注入的 env 是否到位。
+        print(
+            f"[boot] home={settings.home} models_dir={settings.models_dir} "
+            f"auth={'on' if settings.auth_token else 'off'}",
+            flush=True,
+        )
         # 建全部 sqlite 表（模型状态 + 项目工作流），幂等。
         container.database().create_all()
         # 不阻塞启动；启动后立刻可应答 /health。首次需下载则停在 awaiting_consent 等用户确认，
@@ -43,6 +50,10 @@ def create_app() -> FastAPI:
 
     # 统一响应包装：领域异常 → HTTP 200 + ApiResponse（成功响应的自动包装在各 EnvelopeRoute）。
     install_exception_handlers(app)
+
+    # 鉴权放在 CORS 之前注册 → CORS 处于最外层，能给 401 响应补上 CORS 头供前端读取。
+    # token 为空（dev）时中间件整体放行。
+    app.add_middleware(AuthMiddleware, token=settings.auth_token)
 
     # 桌面端 Tauri webview 经浏览器上下文跨源调用本服务，需放行本地来源。
     # 服务只绑 127.0.0.1（仅本机可达），故放行 localhost / tauri 来源是安全的。
