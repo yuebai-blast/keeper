@@ -176,18 +176,33 @@ def test_validation_error_maps_to_biz_code(client):
     assert _biz_code(resp) == BizCode.VALIDATION_ERROR.code
 
 
-def test_thumbnail_returns_jpeg(client, monkeypatch):
+def test_thumbnail_returns_jpeg(app, monkeypatch, tmp_path):
+    from dependency_injector import providers as di_providers
+    from keeper_engine.config.settings import Settings
+
+    s = Settings(home=tmp_path)
+    app.container.settings.override(di_providers.Object(s))
+    inside = s.workspace_dir / "proj" / "x.jpg"
     monkeypatch.setattr("keeper_engine.util.imaging.cached_thumbnail", lambda p, **k: b"\xff\xd8jpeg")
-    resp = client.get("/thumbnail", params={"path": "/x.jpg", "size": 256})
+    tc = TestClient(app)
+    resp = tc.get("/thumbnail", params={"path": str(inside), "size": 256})
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/jpeg"
     assert resp.content == b"\xff\xd8jpeg"
 
 
-def test_thumbnail_404_on_bad_path(client, monkeypatch):
+def test_thumbnail_404_on_bad_path(app, monkeypatch, tmp_path):
+    from dependency_injector import providers as di_providers
+    from keeper_engine.config.settings import Settings
+
+    s = Settings(home=tmp_path)
+    app.container.settings.override(di_providers.Object(s))
+    inside = s.workspace_dir / "proj" / "missing.jpg"
+
     def boom(p, **k):
         raise FileNotFoundError("nope")
 
     monkeypatch.setattr("keeper_engine.util.imaging.cached_thumbnail", boom)
-    resp = client.get("/thumbnail", params={"path": "/missing.jpg", "size": 256})
+    tc = TestClient(app)
+    resp = tc.get("/thumbnail", params={"path": str(inside), "size": 256})
     assert resp.status_code == 404
