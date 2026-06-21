@@ -46,6 +46,7 @@ from ..response.project_response import (
     ProjectDetailResponse,
     ProjectPreviewResponse,
     ProjectView,
+    ReviewResponse,
 )
 from ..util import imaging
 from ..enumeration.assess_status import AssessStatus
@@ -471,6 +472,33 @@ class ProjectService:
         project.completed_at = datetime.now()
         self._projects.update(project)
         return CompleteResponse(output_dir=project.target_dir, kept_count=len(kept))
+
+    # ── 二次预览（项目级跨组去留）────────────────────────────────────────────
+
+    def get_review(self, project_id: int) -> ReviewResponse:
+        """跨组拍平所有照片的去留：kept / discarded 两区，区内按组号升序、组内层②分降序。"""
+        self._require_project(project_id)
+        photos = self._photos.by_project(project_id)
+        views = [PhotoView.model_validate(p) for p in photos]
+        views.sort(key=lambda v: (v.group_key or "", -(v.llm_score or 0.0)))
+        kept = [v for v in views if v.selection == Selection.KEPT.value]
+        discarded = [v for v in views if v.selection != Selection.KEPT.value]
+        return ReviewResponse(kept=kept, discarded=discarded)
+
+    def update_selection_batch(
+        self, project_id: int, photo_ids: list[int], selection: Selection
+    ) -> ReviewResponse:
+        """二次预览页批量改去留：把指定照片整体置为 KEPT/DISCARDED，落库后返回最新分区。"""
+        self._require_project(project_id)
+        wanted = set(photo_ids)
+        touched: list[ProjectPhoto] = []
+        for p in self._photos.by_project(project_id):
+            if p.id in wanted:
+                p.selection = selection.value
+                touched.append(p)
+        if touched:
+            self._photos.update_many(touched)
+        return self.get_review(project_id)
 
     # ── 删除 ────────────────────────────────────────────────────────────────
 

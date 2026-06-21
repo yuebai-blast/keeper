@@ -17,6 +17,7 @@ from ..request.project_request import (
     ProjectCreateRequest,
     ProjectPreviewRequest,
     RetryRequest,
+    ReviewSelectionRequest,
     SelectionUpdateRequest,
 )
 from ..response.envelope import EnvelopeRoute
@@ -28,6 +29,7 @@ from ..response.project_response import (
     ProjectDetailResponse,
     ProjectPreviewResponse,
     ProjectView,
+    ReviewResponse,
 )
 from ..service.pk_service import PkService
 from ..service.project_service import ProjectService
@@ -184,6 +186,29 @@ def complete(
 ) -> CompleteResponse:
     """门禁：全组已确认，否则 400。"""
     return svc.complete(project_id)
+
+
+# ── 二次预览（项目级跨组去留）────────────────────────────────────────────────
+
+@router.get("/{project_id}/review", response_model=ReviewResponse)
+@inject
+def get_review(
+    project_id: int,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> ReviewResponse:
+    """二次预览页：跨组拍平的 kept/discarded 去留结果。"""
+    return svc.get_review(project_id)
+
+
+@router.post("/{project_id}/selection", response_model=ReviewResponse)
+@inject
+def update_selection_batch(
+    project_id: int,
+    req: ReviewSelectionRequest,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> ReviewResponse:
+    """二次预览页批量改去留，返回最新分区。"""
+    return svc.update_selection_batch(project_id, req.photo_ids, req.selection)
 
 
 # ── PK 擂台 ──────────────────────────────────────────────────────────────────

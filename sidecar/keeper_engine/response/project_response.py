@@ -119,6 +119,13 @@ class CompleteResponse(BaseModel):
     kept_count: int
 
 
+class ReviewResponse(BaseModel):
+    """二次预览页：跨组拍平的去留结果——上区 kept、下区 discarded。"""
+
+    kept: list[PhotoView] = Field(default_factory=list)
+    discarded: list[PhotoView] = Field(default_factory=list)
+
+
 class AssessProgress(BaseModel):
     """评测实时进度（内存侧信道，非持久化）。
 

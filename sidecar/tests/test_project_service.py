@@ -523,3 +523,44 @@ def test_confirm_all_progress_counts_pending_groups(svc, tmp_path):
     p = service.get_progress(project.id)
     assert p.phase == AssessPhase.DONE.value
     assert p.group_count == 2  # 两组都待评测，组级总数=2
+
+
+# ── 二次预览（项目级跨组去留）──────────────────────────────────────────────
+
+
+def test_get_review_partitions_and_sorts(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 6)
+    pid = service.create("p", str(src)).id
+    service.group(pid)
+    service.assess_group(pid, "g1")
+    service.assess_group(pid, "g2")
+    rv = service.get_review(pid)
+    # kept/discarded 互补、覆盖全部照片
+    all_ids = {p.id for p in service._photos.by_project(pid)}
+    assert {p.id for p in rv.kept} | {p.id for p in rv.discarded} == all_ids
+    assert all(p.selection == Selection.KEPT.value for p in rv.kept)
+    assert all(p.selection == Selection.DISCARDED.value for p in rv.discarded)
+    # 区内按组号升序、组内层②分降序
+    keys = [(p.group_key, -(p.llm_score or 0.0)) for p in rv.kept]
+    assert keys == sorted(keys)
+
+
+def test_update_selection_batch_flips(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 6)
+    pid = service.create("p", str(src)).id
+    service.group(pid)
+    service.assess_group(pid, "g1")
+    service.assess_group(pid, "g2")
+    rv = service.get_review(pid)
+    flip_ids = [rv.kept[0].id]
+    rv2 = service.update_selection_batch(pid, flip_ids, Selection.DISCARDED)
+    assert flip_ids[0] in {p.id for p in rv2.discarded}
+    assert flip_ids[0] not in {p.id for p in rv2.kept}
+
+
+def test_get_review_missing_project_rejected(svc):
+    service, _ = svc
+    with pytest.raises(BizException):
+        service.get_review(999999)

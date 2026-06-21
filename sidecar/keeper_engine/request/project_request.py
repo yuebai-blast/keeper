@@ -48,6 +48,13 @@ class PkChooseRequest(BaseModel):
     outcome: PkOutcome
 
 
+class ReviewSelectionRequest(BaseModel):
+    """二次预览页批量改去留：把一批照片整体置为 KEPT 或 DISCARDED。"""
+
+    photo_ids: list[int]
+    selection: Selection
+
+
 class RetryRequest(BaseModel):
     """重试评测失败图。photo_id 为 None=该组全部未解决失败图；否则只重试该张。"""
 
