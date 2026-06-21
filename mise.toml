@@ -96,6 +96,6 @@ dir = "apps/website"
 run = "pnpm test"
 
 [tasks.site-image]
-description = "本地构建官网 Docker 镜像（apps/website/Dockerfile，多阶段：node 构建 → nginx 托管）"
-dir = "apps/website"
-run = "docker build -t keeper-website:local ."
+description = "本地构建官网 Docker 镜像（apps/website/Dockerfile，多阶段：mise 装 node → 构建 → nginx 托管）"
+# 不设 dir：从仓库根构建，让 mise.toml 进上下文（镜像内自己装 node/pnpm，版本只认 [tools]）
+run = "docker build -f apps/website/Dockerfile -t keeper-website:local ."

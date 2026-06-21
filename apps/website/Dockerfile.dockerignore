@@ -1,0 +1,18 @@
+# 官网镜像专属的 ignore 文件（BuildKit 特性）：
+# 用 `-f apps/website/Dockerfile` 构建时，BuildKit 优先用这份、不再读仓库根 .dockerignore，
+# 于是每个子项目各管各的 ignore，单仓多镜像互不干扰。
+# 注意：下面的路径仍相对「构建上下文根」（仓库根）书写，不是相对本文件所在目录。
+#
+# 官网镜像以仓库根为构建上下文，但实际只需要 mise.toml + apps/website 源码。
+# 白名单策略：先忽略一切，再放行需要的，避免把 sidecar/.venv、src-tauri/target、
+# 各处 node_modules 等灌进构建上下文拖慢构建。
+*
+
+# 放行：版本锁 + 官网源码
+!mise.toml
+!apps/website
+
+# 放行后再剔除 apps/website 内部不该进镜像的重目录/产物（镜像内会重新 install/build）
+apps/website/node_modules
+apps/website/dist
+**/.git
