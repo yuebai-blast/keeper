@@ -53,7 +53,7 @@ const zh: Copy = {
     kicker: "工作流", title: "四步，从一堆连拍到精选", lede: "每层漏斗规则相同：≥60 分全进下一层，不足保底数则按分补够，绝不替你砍掉够好的。",
     steps: [
       { n: "01", title: "分组", body: "相似连拍按语义 + 时间 + 人脸自动聚成「同一个瞬间」。" },
-      { n: "02", title: "层① 本地模型", body: "按技术质量打分：锐度 / 曝光 / 人脸 / IQA 美学，闭眼脱焦扣分。" },
+      { n: "02", title: "层① 本地模型", body: "按技术质量打分：锐度 / 曝光 / 人脸 / 美学，闭眼脱焦扣分。" },
       { n: "03", title: "层② 在线大模型", body: "按审美 / 表情 / 构图 / 语义打分，给出可解释的去留理由。" },
       { n: "04", title: "A/B 擂台终选", body: "你在擂台上两两对决，做最终裁决——留谁你说了算。" },
     ],
@@ -61,7 +61,7 @@ const zh: Copy = {
   features: {
     kicker: "特性", title: "为什么是 Keeper",
     items: [
-      { title: "本地模型评分", body: "DINOv2 / InsightFace / pyiqa 在你机器上跑，离线可用。" },
+      { title: "本地模型评分", body: "画质 / 美学 / 人脸等多个本地 AI 模型在你机器上跑，离线可用。" },
       { title: "在线大模型审美", body: "接火山方舟（Ark），按审美与语义二次精选。" },
       { title: "RAW · HEIC 支持", body: "原生解码主流相机 RAW 与 HEIC，缩略图就近缓存。" },
       { title: "人脸归组", body: "同场景不同人自动拆开，多人合影按「是不是同一拨人」区分。" },
@@ -99,13 +99,13 @@ const zh: Copy = {
       { q: "需要联网吗？", a: "首次启动需联网下载本地模型（约 1.6 GB）。之后本地流程完全离线；只有层②大模型评分需要联网。" },
       { q: "未签名安装包怎么放行？", a: "macOS 到「隐私与安全性」点「仍要打开」，或用 xattr 去隔离属性；Windows 在 SmartScreen 点「仍要运行」。" },
       { q: "需要 API key 吗？", a: "层②大模型评分需要火山方舟（Ark）API key，在应用「设置」页录入，密钥只存本地、绝不入库。" },
-      { q: "可以商用吗？", a: "当前内置的人脸模型（buffalo_l）仅供非商用研究，商用前需替换或获授权。" },
+      { q: "可以商用吗？", a: "当前内置的人脸识别模型仅供非商用研究，商用前需替换或获授权。" },
     ],
   },
   footer: {
     tagline: "把最好的留下，留在你自己的电脑里。",
     download: "下载", github: "GitHub", docs: "文档",
-    license: "内置 buffalo_l 模型仅供非商用研究。",
+    license: "内置人脸识别模型仅供非商用研究。",
     copyright: "© 2026 Keeper · 留影",
   },
 };
@@ -136,7 +136,7 @@ const en: Copy = {
     kicker: "How it works", title: "Four steps, from bursts to picks", lede: "Each funnel uses the same rule: everything ≥60 passes; if short of the quota, top up by score — never cutting anything good enough.",
     steps: [
       { n: "01", title: "Group", body: "Similar bursts are clustered into one 'moment' by semantics, time and faces." },
-      { n: "02", title: "Stage ① Local model", body: "Technical scoring: sharpness, exposure, faces, IQA aesthetics; penalties for closed eyes / out-of-focus." },
+      { n: "02", title: "Stage ① Local model", body: "Technical scoring: sharpness, exposure, faces, aesthetics; penalties for closed eyes / out-of-focus." },
       { n: "03", title: "Stage ② Cloud LLM", body: "Scored on aesthetics, expression, composition and semantics, with explainable keep/cut reasons." },
       { n: "04", title: "A/B arena", body: "You decide head-to-head in the arena — the final cut is always yours." },
     ],
@@ -144,7 +144,7 @@ const en: Copy = {
   features: {
     kicker: "Features", title: "Why Keeper",
     items: [
-      { title: "Local model scoring", body: "DINOv2 / InsightFace / pyiqa run on your machine, offline-capable." },
+      { title: "Local model scoring", body: "Several local AI models (quality / aesthetics / faces) run on your machine, offline-capable." },
       { title: "Cloud LLM aesthetics", body: "Volcano Ark for a second, taste-aware pass." },
       { title: "RAW · HEIC support", body: "Native decoding of common camera RAW and HEIC, with thumbnail caching." },
       { title: "Face-aware grouping", body: "Same scene, different people get split apart; group photos by 'same crew or not'." },
@@ -182,13 +182,13 @@ const en: Copy = {
       { q: "Do I need internet?", a: "First launch downloads local models (~1.6 GB). After that the local pipeline is fully offline; only Stage ② LLM scoring needs the network." },
       { q: "How do I open an unsigned build?", a: "macOS: 'Open Anyway' in Privacy & Security, or strip the quarantine attr with xattr. Windows: 'Run anyway' in SmartScreen." },
       { q: "Do I need an API key?", a: "Stage ② scoring needs a Volcano Ark API key, entered in Settings; it's stored locally and never committed." },
-      { q: "Can I use it commercially?", a: "The bundled face model (buffalo_l) is for non-commercial research only; replace or license it before commercial use." },
+      { q: "Can I use it commercially?", a: "The bundled face-recognition model is for non-commercial research only; replace or license it before commercial use." },
     ],
   },
   footer: {
     tagline: "Keep the best, on your own machine.",
     download: "Download", github: "GitHub", docs: "Docs",
-    license: "Bundled buffalo_l model is for non-commercial research only.",
+    license: "Bundled face-recognition model is for non-commercial research only.",
     copyright: "© 2026 Keeper",
   },
 };

@@ -9,8 +9,8 @@ const open = ref(false);
 const LEGEND: { name: string; range: string; meaning: string }[] = [
   { name: "终分", range: "0–100", meaning: "本地综合分 = 基础分 − 扣分项；漏斗据此筛选" },
   { name: "基础分", range: "0–100", meaning: "扣分前 = 技术质量×0.45 + 美学×0.20 + 锐度×0.35" },
-  { name: "技术质量", range: "0–100", meaning: "TOPIQ 无参考画质；越高越清晰干净。face=按主脸裁剪评，nr=按整图评" },
-  { name: "美学", range: "0–100", meaning: "CLIP-IQA+ 观感分；越高观感越好" },
+  { name: "技术质量", range: "0–100", meaning: "无参考画质评估；越高越清晰干净。face=按主脸裁剪评，nr=按整图评" },
+  { name: "美学", range: "0–100", meaning: "观感评分；越高观感越好" },
   { name: "锐度", range: "0–100", meaning: "主体（优先主脸）锐度归一；越高越锐利，脱焦/糊则低" },
   { name: "熵", range: "0–8", meaning: "灰度信息熵；越低画面越单调（如大片纯色），越高细节越丰富" },
   { name: "亮度", range: "0–255", meaning: "平均亮度；过低偏欠曝、过高偏过曝" },
