@@ -22,3 +22,7 @@ class Score(BaseModel):
         default="",
         description="修图建议：能修怎么修 / 修不了或不划算的原因，≤40 字",
     )
+    is_junk: bool = Field(
+        default=False,
+        description="层②判定是否为非摄影杂图/垃圾图（截图/地图/纯色/聊天记录等）",
+    )
