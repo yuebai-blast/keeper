@@ -7,6 +7,24 @@ use tauri_plugin_shell::ShellExt;
 /// sidecar 鉴权 token（prod 启动时随机生成，经 env 给 sidecar、经 IPC 给前端）。dev 为空串=不鉴权。
 struct AuthToken(String);
 
+/// sidecar 监听端口（prod 启动时选随机空闲端口，经 --port 给 sidecar、经 IPC 给前端）。dev 固定 8761。
+struct SidecarPort(u16);
+
+/// dev 端口：dev 下壳不拉起 sidecar，用 `mise run sidecar` 起在固定 8761，前端与之对齐。
+const DEV_PORT: u16 = 8761;
+
+/// 选一个 OS 分配的空闲端口：bind 到 :0 拿到端口号后立刻释放，再交给 sidecar bind。
+/// drop 到 sidecar 真正 bind 之间有极小竞态窗口，本机单用户基本不会撞；撞上则 sidecar 启动失败会进 stderr。
+fn pick_free_port() -> u16 {
+    let listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("无法绑定空闲端口给 sidecar");
+    listener
+        .local_addr()
+        .expect("无法读取 sidecar 端口")
+        .port()
+    // listener 在此 drop，端口释放，交给 sidecar
+}
+
 /// 生成 32 字节随机 token 的十六进制串。
 fn generate_token() -> String {
     let mut buf = [0u8; 32];
@@ -48,6 +66,12 @@ fn get_auth_token(state: tauri::State<AuthToken>) -> String {
     state.0.clone()
 }
 
+/// 前端取 sidecar 监听端口（启动时调用一次，用于拼接基址）。dev 下为 8761。
+#[tauri::command]
+fn get_sidecar_port(state: tauri::State<SidecarPort>) -> u16 {
+    state.0
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -63,6 +87,14 @@ pub fn run() {
             };
             app.manage(AuthToken(token.clone()));
 
+            // dev 固定 8761（与 `mise run sidecar` 对齐）；prod 选随机空闲端口避开占用。
+            let port = if cfg!(debug_assertions) {
+                DEV_PORT
+            } else {
+                pick_free_port()
+            };
+            app.manage(SidecarPort(port));
+
             // 仅打包运行时自动拉起内置 sidecar；dev 下用 `mise run sidecar`，不重复起。
             if !cfg!(debug_assertions) {
                 // OS 约定目录：数据根→app_data_dir，模型缓存→app_cache_dir/models（大缓存不进备份）。
@@ -77,7 +109,7 @@ pub fn run() {
                     .shell()
                     .sidecar("keeper-sidecar")
                     .expect("缺少 keeper-sidecar 可执行")
-                    .args(["--port", "8761"])
+                    .args(["--port", &port.to_string()])
                     .env("KEEPER_AUTH_TOKEN", &token)
                     .env("KEEPER_HOME", data_dir)
                     .env("KEEPER_MODELS_DIR", models_dir);
@@ -96,7 +128,8 @@ pub fn run() {
             pick_folder,
             open_path,
             exit_app,
-            get_auth_token
+            get_auth_token,
+            get_sidecar_port
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

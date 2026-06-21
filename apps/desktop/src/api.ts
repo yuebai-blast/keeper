@@ -1,19 +1,30 @@
 // Keeper 推理 sidecar 的 HTTP 客户端。
-// 本机服务，默认 127.0.0.1:8761（mise run sidecar 启动）。可由 VITE_SIDECAR_URL 覆盖。
+// 本机服务，默认 127.0.0.1:8761（mise run sidecar 启动）。prod 端口随机，启动时经 initAuth 从 Rust 取。
+// VITE_SIDECAR_URL 若显式设置则最高优先（dev/手动覆盖）。
 
 import { invoke } from "@tauri-apps/api/core";
 
-const BASE = import.meta.env.VITE_SIDECAR_URL ?? "http://127.0.0.1:8761";
+// 显式覆盖（dev/手动）最高优先；否则启动时由 initAuth 用 Rust 给的随机端口覆写；再否则 8761 兜底。
+const OVERRIDE_URL = import.meta.env.VITE_SIDECAR_URL as string | undefined;
+let BASE = OVERRIDE_URL ?? "http://127.0.0.1:8761";
 
 // sidecar 鉴权 token（启动时经 initAuth 从 Rust 取一次）。空串=不发（dev / 非 Tauri 环境）。
 let authToken = "";
 
-/** 启动时取一次 sidecar 鉴权 token（非 Tauri 环境兜底为空=不鉴权）。须在任何请求/缩略图渲染前 await。 */
+/**
+ * 启动时取一次 sidecar 鉴权 token 与监听端口（非 Tauri 环境兜底）。须在任何请求/缩略图渲染前 await。
+ * 端口：VITE_SIDECAR_URL 显式设置则不覆写；否则用 Rust 给的端口拼基址；invoke 不可用则保持 8761 兜底。
+ */
 export async function initAuth(): Promise<void> {
   try {
     authToken = await invoke<string>("get_auth_token");
+    if (!OVERRIDE_URL) {
+      const port = await invoke<number>("get_sidecar_port");
+      BASE = `http://127.0.0.1:${port}`;
+    }
   } catch {
-    authToken = ""; // 非 Tauri（纯浏览器）环境：invoke 不可用
+    // 非 Tauri（纯浏览器）环境：invoke 不可用，保持默认（不鉴权 + 8761 兜底）
+    authToken = "";
   }
 }
 
