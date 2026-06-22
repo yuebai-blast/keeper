@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # 镜像由 Dockerfile 自包含构建（内部装 mise + node 出前端），故 runner 上不需要 mise/前端依赖
       - name: Set up Buildx
