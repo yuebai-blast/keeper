@@ -165,9 +165,22 @@ class VisionClient:
         model_id = self._settings.dino_model
         dev = self._torch_device()
         logger.info("vision: 加载 DINOv2 %s（device=%s）…", model_id, dev.type)
+
+        def _load(local_only: bool):
+            proc = AutoImageProcessor.from_pretrained(model_id, local_files_only=local_only)
+            model = AutoModel.from_pretrained(model_id, local_files_only=local_only)
+            return proc, model
+
         try:
-            proc = AutoImageProcessor.from_pretrained(model_id)
-            model = AutoModel.from_pretrained(model_id).to(dev).eval()
+            # local-first：已缓存就离线加载，绝不因网络抖动失败。transformers 5.x 每次
+            # from_pretrained 都会联网向 HF Hub 校验，连接/DNS 失败时它不回退本地缓存而是直接抛
+            # 「Can't load image processor」——本地优先产品不能因此启动不了。仅首次未缓存才联网下载。
+            try:
+                proc, model = _load(local_only=True)
+            except OSError:
+                logger.info("vision: DINOv2 未命中本地缓存，联网下载 %s…", model_id)
+                proc, model = _load(local_only=False)
+            model = model.to(dev).eval()
         except Exception as e:
             raise VisionUnavailable(f"DINOv2 加载失败：{e}") from e
         self._dino = (proc, model, dev)
