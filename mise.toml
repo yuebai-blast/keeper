@@ -12,7 +12,10 @@ python = "3.11.15"       # sidecar 的 pyproject 要求 >=3.11,<3.14；钉死具
 uv = "0.11.20"           # Python 依赖管理与解析统一走 uv
 node = "24.16.0"         # 前端 / Tauri 构建
 pnpm = "10.11.0"         # 前端包管理器（首次 `mise install` 若版本不可用，按提示改成最近的可用版）
-rust = "1.96.0"          # Tauri 壳编译（Tauri 2 依赖树要求 rustc ≥1.88，钉新版留余量）
+# Tauri 壳编译（Tauri 2 依赖树要求 rustc ≥1.88，钉新版留余量）。
+# mise 装 rust 默认走 minimal profile，不含 rustfmt/clippy；CI 的 desktop-fmt-check
+# （cargo fmt）与 desktop-clippy（cargo clippy）都要用，故显式同装这两个 component。
+rust = { version = "1.96.0", components = "rustfmt,clippy" }
 
 [tasks.install]
 description = "安装全部依赖：sidecar 的 Python 依赖 + desktop 的前端依赖"

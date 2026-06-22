@@ -16,12 +16,8 @@ const DEV_PORT: u16 = 8761;
 /// 选一个 OS 分配的空闲端口：bind 到 :0 拿到端口号后立刻释放，再交给 sidecar bind。
 /// drop 到 sidecar 真正 bind 之间有极小竞态窗口，本机单用户基本不会撞；撞上则 sidecar 启动失败会进 stderr。
 fn pick_free_port() -> u16 {
-    let listener =
-        std::net::TcpListener::bind("127.0.0.1:0").expect("无法绑定空闲端口给 sidecar");
-    listener
-        .local_addr()
-        .expect("无法读取 sidecar 端口")
-        .port()
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("无法绑定空闲端口给 sidecar");
+    listener.local_addr().expect("无法读取 sidecar 端口").port()
     // listener 在此 drop，端口释放，交给 sidecar
 }
 
