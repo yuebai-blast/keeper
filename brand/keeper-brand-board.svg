@@ -1,0 +1,85 @@
+<svg width="1280" height="800" viewBox="0 0 1280 800" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Keeper 品牌标志板">
+  <defs>
+    <g id="frame" fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 32 V22 Q14 14 22 14 H32"/>
+      <path d="M64 14 H74 Q82 14 82 22 V32"/>
+      <path d="M82 64 V74 Q82 82 74 82 H64"/>
+      <path d="M32 82 H22 Q14 82 14 74 V64"/>
+    </g>
+    <g id="kay" fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M40 30 V66"/>
+      <path d="M40 49 L60 31"/>
+      <path d="M40 49 L60 65"/>
+    </g>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#222530"/><stop offset="1" stop-color="#15171C"/>
+    </linearGradient>
+    <style>
+      .panel{fill:#181B21;stroke:#262A32;stroke-width:1;}
+      .lbl{font-family:'Inter','Helvetica Neue',Arial,sans-serif;fill:#6B7079;font-size:12px;letter-spacing:2px;}
+      .cn{font-family:'PingFang SC','Noto Sans SC',sans-serif;}
+    </style>
+  </defs>
+
+  <!-- 画布 -->
+  <rect width="1280" height="800" fill="#101216"/>
+
+  <!-- 页眉 -->
+  <text x="48" y="62" font-family="'PingFang SC',Inter,sans-serif" font-size="20" font-weight="600" fill="#F5F2EA">Keeper <tspan fill="#E7A23C">留影</tspan></text>
+  <text x="1232" y="62" text-anchor="end" class="lbl">LOCAL-FIRST AI PHOTO CULLING</text>
+  <line x1="48" y1="84" x2="1232" y2="84" stroke="#262A32" stroke-width="1"/>
+
+  <!-- 行1 -->
+  <!-- 01 标志 -->
+  <rect class="panel" x="48" y="112" width="373" height="304" rx="14"/>
+  <text x="68" y="142" class="lbl">01 — LOGOTYPE</text>
+  <g transform="translate(159.5 189) scale(1.5625)"><use href="#frame" stroke="#F5F2EA"/><use href="#kay" stroke="#E7A23C"/></g>
+  <text x="234" y="392" text-anchor="middle" font-family="Inter,sans-serif" font-size="22" font-weight="600" letter-spacing="1" fill="#EDEAE2">Keeper</text>
+
+  <!-- 02 构成 -->
+  <rect class="panel" x="453" y="112" width="373" height="304" rx="14"/>
+  <text x="473" y="142" class="lbl">02 — CONSTRUCTION</text>
+  <g transform="translate(564.5 189) scale(1.5625)">
+    <rect x="14" y="14" width="68" height="68" rx="8" fill="none" stroke="#2E333D" stroke-width="1.2"/>
+    <line x1="48" y1="6" x2="48" y2="90" stroke="#2E333D" stroke-width="1.2"/>
+    <line x1="6" y1="48" x2="90" y2="48" stroke="#2E333D" stroke-width="1.2"/>
+    <use href="#frame" stroke="#5A6070"/>
+    <use href="#kay" stroke="#E7A23C"/>
+  </g>
+
+  <!-- 03 应用图标 -->
+  <rect class="panel" x="858" y="112" width="373" height="304" rx="14"/>
+  <text x="878" y="142" class="lbl">03 — APP ICON</text>
+  <g transform="translate(949.5 169) scale(0.371)">
+    <rect width="512" height="512" rx="114" fill="url(#tile)"/>
+    <g transform="translate(106 106) scale(3.125)"><use href="#frame" stroke="#F5F2EA"/><use href="#kay" stroke="#E7A23C"/></g>
+  </g>
+
+  <!-- 行2 -->
+  <!-- 04 色彩 -->
+  <rect class="panel" x="48" y="448" width="373" height="304" rx="14"/>
+  <text x="68" y="478" class="lbl">04 — COLOR</text>
+  <g font-family="Inter,monospace" font-size="13" font-weight="500">
+    <rect x="68" y="500" width="333" height="62" rx="8" fill="#1A1C22" stroke="#2E333D" stroke-width="1"/>
+    <text x="88" y="536" fill="#EDEAE2">墨黑 Ink</text><text x="381" y="536" text-anchor="end" fill="#8A8F99">#1A1C22</text>
+    <rect x="68" y="572" width="333" height="62" rx="8" fill="#E7A23C"/>
+    <text x="88" y="608" fill="#3A2A10">琥珀 Keeper Gold</text><text x="381" y="608" text-anchor="end" fill="#5C460F">#E7A23C</text>
+    <rect x="68" y="644" width="333" height="62" rx="8" fill="#F5F2EA"/>
+    <text x="88" y="680" fill="#5C5A52">象牙 Ivory</text><text x="381" y="680" text-anchor="end" fill="#9B988E">#F5F2EA</text>
+  </g>
+
+  <!-- 05 字标组合 -->
+  <rect class="panel" x="453" y="448" width="373" height="304" rx="14"/>
+  <text x="473" y="478" class="lbl">05 — LOCKUP</text>
+  <g transform="translate(495 556) scale(0.95)"><use href="#frame" stroke="#F5F2EA"/><use href="#kay" stroke="#E7A23C"/></g>
+  <text x="585" y="600" font-family="Inter,sans-serif" font-size="40" font-weight="650" letter-spacing="-1.5" fill="#F5F2EA">Keeper</text>
+  <text x="586" y="632" class="cn" font-size="16" fill="#E7A23C" letter-spacing="3">留影</text>
+  <text x="586" y="664" class="cn" font-size="13" fill="#73777F">本地优先 · 你来留下那一张</text>
+
+  <!-- 06 主张 -->
+  <rect class="panel" x="858" y="448" width="373" height="304" rx="14"/>
+  <text x="878" y="478" class="lbl">06 — ESSENCE</text>
+  <text x="878" y="588" class="cn" font-size="44" font-weight="600" fill="#F5F2EA">机器递候选，</text>
+  <text x="878" y="648" class="cn" font-size="44" font-weight="600" fill="#F5F2EA">你<tspan fill="#E7A23C">留下</tspan>那一张。</text>
+  <text x="878" y="712" class="lbl">PHOTOS NEVER LEAVE YOUR MACHINE</text>
+</svg>

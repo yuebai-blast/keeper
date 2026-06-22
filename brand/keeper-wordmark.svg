@@ -1,0 +1,19 @@
+<svg width="520" height="132" viewBox="0 0 520 132" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Keeper 留影">
+  <!-- 横向锁定组合：标志 + 字标 + 中文名 + 一句话定位。最终交付前建议把文字转曲（outline）。 -->
+  <g transform="translate(14 22) scale(0.92)">
+    <g stroke="#1A1C22" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M14 32 V22 Q14 14 22 14 H32"/>
+      <path d="M64 14 H74 Q82 14 82 22 V32"/>
+      <path d="M82 64 V74 Q82 82 74 82 H64"/>
+      <path d="M32 82 H22 Q14 82 14 74 V64"/>
+    </g>
+    <g stroke="#E7A23C" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M40 30 V66"/>
+      <path d="M40 49 L60 31"/>
+      <path d="M40 49 L60 65"/>
+    </g>
+  </g>
+  <text x="128" y="72" font-family="'Inter','Helvetica Neue',Arial,sans-serif" font-size="58" font-weight="650" letter-spacing="-1.5" fill="#1A1C22">Keeper</text>
+  <text x="334" y="72" font-family="'PingFang SC','Noto Sans SC',sans-serif" font-size="34" font-weight="500" letter-spacing="2" fill="#E7A23C">留影</text>
+  <text x="130" y="104" font-family="'PingFang SC','Inter',sans-serif" font-size="17" font-weight="400" letter-spacing="0.5" fill="#73777F">本地优先的 AI 选片 · 你来留下那一张</text>
+</svg>

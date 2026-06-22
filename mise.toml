@@ -89,6 +89,18 @@ dir = "apps/desktop"
 # 会提示设置密码：设了的话私钥密码即 CI secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD。
 run = "pnpm tauri signer generate -w ~/.tauri/keeper-updater.key"
 
+[tasks.icon]
+description = "从 brand/ 标志重生成桌面应用图标 + 官网 favicon 并应用（改了 logo 后跑一次）"
+dir = "."
+# tauri icon 直接吃 SVG（resvg 栅格化），一份母版铺满桌面 + Windows Store 全套尺寸；
+# 它会顺带生成 android/ios/64x64，本产品只发桌面，跑完删掉以保持图标目录与 tauri.conf 引用一致。
+shell = "bash -c"
+run = """
+pnpm --dir apps/desktop tauri icon ../../brand/keeper-app-icon.svg -o src-tauri/icons
+rm -rf apps/desktop/src-tauri/icons/android apps/desktop/src-tauri/icons/ios apps/desktop/src-tauri/icons/64x64.png
+cp brand/keeper-favicon.svg apps/website/public/favicon.svg
+"""
+
 # ---- desktop 质量门禁（CI 与发版前共用，命令统一走 mise）----
 [tasks.desktop-install]
 description = "安装 desktop（apps/desktop）前端依赖"
