@@ -5,7 +5,16 @@ on:
   workflow_dispatch: {}   # 手动逃生口：紧急重发/回滚验证
 
 jobs:
+  # 发版前质量门禁（复用 CI 同一份定义，不过不许出包）：
+  #   verify-desktop —— 前端类型检查 + Rust 格式/clippy，在三平台矩阵各跑一遍；
+  #   verify-sidecar —— sidecar lint + test（打包会把它冻结进安装包，发版前先验）。
+  verify-desktop:
+    uses: ./.github/workflows/desktop-quality.yml
+  verify-sidecar:
+    uses: ./.github/workflows/sidecar-quality.yml
+
   build:
+    needs: [verify-desktop, verify-sidecar]   # 两道门禁全绿才出包
     permissions:
       contents: write   # 让 GITHUB_TOKEN 能创建/写入 Release
     strategy:
@@ -28,14 +37,6 @@ jobs:
       - uses: jdx/mise-action@v2
       - run: mise install
       - run: mise run install
-      # 发版前质量门禁：前端类型检查 + Rust 格式/clippy，不过不许出包。
-      # 在打包矩阵的每个 OS 上各跑一遍，顺带覆盖平台相关问题。
-      - name: Build frontend (typecheck + dist)
-        run: mise run desktop-build
-      - name: Rust format check
-        run: mise run desktop-fmt-check
-      - name: Rust clippy
-        run: mise run desktop-clippy
       - run: mise run bundle-sidecar
       - run: mise run stage-sidecar
       - name: Build Tauri app

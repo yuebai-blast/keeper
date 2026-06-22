@@ -1,0 +1,26 @@
+name: Sidecar Quality
+
+# 可复用的 sidecar 质量门禁：供 sidecar-ci.yml（PR/push）与 desktop-release.yml
+# （desktop 打包会把 sidecar 冻结进安装包，发版前先验一遍）共同调用，永不漂移。
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  sidecar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+      - name: Install toolchain
+        run: mise install
+      - name: Install deps
+        run: uv sync --directory sidecar
+      - name: Lint
+        run: mise run lint
+      - name: Test
+        run: mise run test

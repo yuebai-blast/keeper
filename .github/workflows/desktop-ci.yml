@@ -9,35 +9,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  desktop:
-    # public 仓 → 所有 OS 免费，直接在真实出货平台上跑校验，抓 Linux 抓不到的
-    # 平台相关问题（mac/win 专属 cfg 代码、平台 API）。mac/win 自带原生 webview，
-    # 无需 Linux 那套 webkit 系统库。矩阵与 desktop-release.yml 出货目标一一对应，
-    # 保证每个要发布的平台都被门禁覆盖。
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - macos-14        # Apple 芯片 (arm64)
-          - macos-15-intel  # Intel (x86_64)，macos-13 已退役，这是 Actions 最后的 x86_64 镜像
-          - windows-2022    # Windows (x86_64)，钉死版本保证可复现
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up mise
-        uses: jdx/mise-action@v2
-      - name: Install toolchain
-        run: mise install
-      - name: Install desktop deps
-        run: mise run desktop-install
-      # 先构建前端：vue-tsc 类型检查 + 产出 dist（tauri-build 要求 frontendDist 存在，clippy 才能编译）
-      - name: Build frontend (typecheck + dist)
-        run: mise run desktop-build
-      - name: Rust format check
-        run: mise run desktop-fmt-check
-      - name: Rust clippy
-        run: mise run desktop-clippy
+  # 质量门禁抽到可复用 workflow，与 desktop-release.yml 发版前门禁共用同一份定义
+  quality:
+    uses: ./.github/workflows/desktop-quality.yml

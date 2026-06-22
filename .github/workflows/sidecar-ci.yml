@@ -4,13 +4,11 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-sidecar-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  sidecar:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
-      - run: mise install
-      - run: uv sync --directory sidecar
-      - run: mise run lint
-      - run: mise run test
+  # 质量门禁抽到可复用 workflow，与 desktop-release.yml（打包前验 sidecar）共用同一份定义
+  quality:
+    uses: ./.github/workflows/sidecar-quality.yml
