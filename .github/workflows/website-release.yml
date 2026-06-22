@@ -19,26 +19,19 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
-      - run: mise install
-      - run: mise run site-install
-      - run: mise run site-test   # 质量门禁：构建镜像前先过单测
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+      - name: Install toolchain
+        run: mise install
+      - name: Install deps
+        run: mise run site-install
+      - name: Test
+        run: mise run site-test   # 质量门禁：构建镜像前先过单测
 
-      # 从 git tag（website-vX.Y.Z）剥出版本号 X.Y.Z；手动触发无 tag 时回退用短 SHA
-      - name: Resolve image tag
-        id: meta
-        run: |
-          set -euo pipefail
-          ref="${{ github.ref_name }}"
-          if [[ "$ref" == website-v* ]]; then
-            version="${ref#website-v}"
-          else
-            version="sha-${GITHUB_SHA::7}"
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -47,6 +40,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 标签交给标准工具 metadata-action：
+      #   monorepo 前缀 tag 用 value=<git ref>+match=<正则> 从 website-vX.Y.Z 提取版本号 X.Y.Z
+      #   （type=semver 默认只剥 v、不剥 website- 前缀，故按官方写法用 match 捕获版本段）；
+      #   flavor latest=auto 是内置的「预发布感知」——仅非预发布版本才追加 latest，
+      #   website-v1.2.3-rc.1 这类预发布不会动 latest，无需自己写 enable 条件；
+      #   type=sha 仅在非 tag（如 workflow_dispatch 手动逃生口）时回退打 sha-<短SHA>。
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.ref_name }},match=website-v(.+)
+            type=sha,enable=${{ github.ref_type != 'tag' }}
+          flavor: |
+            latest=auto
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -54,8 +64,7 @@ jobs:
           context: .
           file: apps/website/Dockerfile
           push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
-            ${{ env.IMAGE }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
