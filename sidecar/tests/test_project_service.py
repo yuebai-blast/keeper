@@ -540,7 +540,8 @@ def test_get_review_partitions_and_sorts(svc, tmp_path):
     all_ids = {p.id for p in service._photos.by_project(pid)}
     assert {p.id for p in rv.kept} | {p.id for p in rv.discarded} == all_ids
     assert all(p.selection == Selection.KEPT.value for p in rv.kept)
-    assert all(p.selection == Selection.DISCARDED.value for p in rv.discarded)
+    # discarded 区契约是 != KEPT（含 None），断言对齐实现而非假设所有弃图均已被标为 DISCARDED
+    assert all(p.selection != Selection.KEPT.value for p in rv.discarded)
     # 区内按组号升序、组内层②分降序
     keys = [(p.group_key, -(p.llm_score or 0.0)) for p in rv.kept]
     assert keys == sorted(keys)
@@ -564,3 +565,30 @@ def test_get_review_missing_project_rejected(svc):
     service, _ = svc
     with pytest.raises(BizException):
         service.get_review(999999)
+
+
+def test_get_review_none_selection_falls_into_discarded(svc, tmp_path):
+    """selection=None 的照片必须落入 discarded 区、不在 kept 区。
+    这是 get_review 实现契约（discarded = selection != KEPT，含 None 兜底）的关键验证。"""
+    service, _ = svc
+    src = _make_source(tmp_path, 6)
+    pid = service.create("p", str(src)).id
+    service.group(pid)
+    service.assess_group(pid, "g1")
+    service.assess_group(pid, "g2")
+
+    # 从任意组取一张已有去留的照片，直接把 selection 置 None 落库
+    all_photos = service._photos.by_project(pid)
+    target = all_photos[0]
+    target.selection = None
+    service._photos.update_many([target])
+
+    rv = service.get_review(pid)
+
+    kept_ids = {p.id for p in rv.kept}
+    discarded_ids = {p.id for p in rv.discarded}
+
+    # selection=None 的照片必须出现在 discarded 区
+    assert target.id in discarded_ids, "selection=None 的照片未落入 discarded 区"
+    # 且不在 kept 区（两区严格互补）
+    assert target.id not in kept_ids, "selection=None 的照片不应出现在 kept 区"
