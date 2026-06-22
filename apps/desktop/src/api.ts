@@ -359,6 +359,7 @@ export interface PhotoView {
   llm_flaws: string;
   llm_editable: "READY" | "WORTH_EDITING" | "NOT_WORTH" | "UNFIXABLE" | "";
   llm_edit_advice: string;
+  llm_is_junk: boolean;
   origin: "PASSED" | "QUOTA_FILL" | null;
   selection: Selection | null;
   rescued: boolean;
@@ -392,6 +393,12 @@ export interface GroupDetail {
 export interface CompleteResult {
   output_dir: string;
   kept_count: number;
+}
+
+/** 二次预览响应：跨组拍平的去留结果。 */
+export interface ReviewResponse {
+  kept: PhotoView[];
+  discarded: PhotoView[];
 }
 
 export interface SelectionChange {
@@ -458,6 +465,17 @@ export const confirmAll = (id: number) =>
 /** 完成：复制「通过」到目标目录 → 删 workspace → 标记完成。 */
 export const completeProject = (id: number) =>
   post<CompleteResult>(`/projects/${id}/complete`, {});
+
+/** 获取项目二次预览（跨组拍平的去留结果）。 */
+export const getReview = (id: number) =>
+  get<ReviewResponse>(`/projects/${id}/review`);
+
+/** 批量更新项目内照片去留（跨组）并返回最新二次预览。 */
+export const updateSelectionBatch = (
+  id: number,
+  photo_ids: number[],
+  selection: Selection,
+) => post<ReviewResponse>(`/projects/${id}/selection`, { photo_ids, selection });
 
 /** 开始/恢复 PK。 */
 export const pkStart = (id: number, gk: string, pool: string[], restart = false) =>

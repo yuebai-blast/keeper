@@ -5,6 +5,8 @@ import {
   assessProjectGroup,
   completeProject,
   confirmAll,
+  getReview,
+  updateSelectionBatch,
   confirmGroup,
   createProject,
   deleteProject,
@@ -22,6 +24,7 @@ import {
   updateSelection,
   type AssessProgress,
   type CompleteResult,
+  type ReviewResponse,
   type GroupDetail,
   type PkOutcome,
   type PkView,
@@ -40,6 +43,7 @@ interface ProjectsState {
   busy: boolean;
   error: string;
   progress: AssessProgress | null; // 评测实时进度（非评测时为 null）
+  review: ReviewResponse | null; // 二次预览页：跨组拍平的去留结果
 }
 
 export const useProjectsStore = defineStore("projects", {
@@ -50,6 +54,7 @@ export const useProjectsStore = defineStore("projects", {
     busy: false,
     error: "",
     progress: null,
+    review: null,
   }),
   getters: {
     /** 是否全部分组都已确认（可提交完成）。 */
@@ -257,6 +262,32 @@ export const useProjectsStore = defineStore("projects", {
         return await completeProject(id);
       } catch (e) {
         return this._fail(e);
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    /** 加载项目二次预览（跨组拍平的去留结果）。 */
+    async loadReview(id: number) {
+      this.busy = true;
+      this.error = "";
+      try {
+        this.review = await getReview(id);
+      } catch (e) {
+        this._fail(e);
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    /** 批量更新照片去留并刷新二次预览。 */
+    async reviewSelect(id: number, photoIds: number[], selection: Selection) {
+      this.busy = true;
+      this.error = "";
+      try {
+        this.review = await updateSelectionBatch(id, photoIds, selection);
+      } catch (e) {
+        this._fail(e);
       } finally {
         this.busy = false;
       }
