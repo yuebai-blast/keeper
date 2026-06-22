@@ -89,7 +89,9 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 | `POST …/{gk}/selection` · `…/{gk}/confirm` | 改去留/救回标记 · 确认本组（标识，可改回） | — |
 | `POST …/{gk}/pk/start` · `…/pk/choose` · `…/pk/undo` | PK 擂台：起/选（四结局）/撤销，每步落库 | — |
 | `POST /projects/{id}/confirm-all` | 一键通过：未评测组先评测，再全部确认 | `ready`→`MODEL_NOT_READY`，层②→`SCORER_FAILED` |
-| `POST /projects/{id}/complete` | 复制「通过」到目标目录 + 删 workspace + 标记完成 | 全组确认才放行，否则 `GROUPS_NOT_ALL_CONFIRMED` |
+| `GET /projects/{id}/review` | 跨组拍平的去留结果（kept/discarded 两区，含 is_junk），供最终预览页 | 不存在→`PROJECT_NOT_FOUND` |
+| `POST /projects/{id}/selection` | 二次预览页批量改去留（项目级，区别于组内 `/groups/{gk}/selection`） | 不存在→`PROJECT_NOT_FOUND` |
+| `POST /projects/{id}/complete` | 完成前需经最终预览页。复制「通过」到目标目录 + 删 workspace + 标记完成 | 全组确认才放行，否则 `GROUPS_NOT_ALL_CONFIRMED` |
 
 ## 分层与漏斗管线模块地图（最关键逻辑）
 
@@ -112,7 +114,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - 持久化层（sqlite）：`config/database.py` 共享 engine（全部 mapper 复用，`create_all` 在 app 启动时建表）；`entity/*` 实体（`Project`/`ProjectPhoto`/`PhotoGroup`/`PkState`/`GeocodeCache`/`ModelModule`）+ `mapper/*` 数据访问。层②/层①评分明细以 JSON 列就地存在 `ProjectPhoto`。
 - `client/geocode_client.py` — 拍摄地在线反查地名（只发 GPS 坐标、不发照片，默认 OSM Nominatim，结果缓存到 `GeocodeCache`）；GPS 读取在 `util/imaging.read_gps`。
 - `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存目录取 `KEEPER_MODELS_DIR`（prod 为 `app_cache_dir/models`，dev 默认 `{KEEPER_HOME}/models`）。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
-- `client/scorer.py` — `Scorer` 协议 + `LocalDirectScorer`（直连火山 Ark），提示词在 `client/prompts/layer2_score.md`（不改代码即可迭代）。**容器里 `scorer` 一行绑定即可切 `CloudRelayScorer`，业务流程不动。**
+- `client/scorer.py` — `Scorer` 协议 + `LocalDirectScorer`（直连火山 Ark），提示词在 `client/prompts/layer2_score.md`（不改代码即可迭代）。层② 额外输出 `is_junk`（非摄影杂图标记：截图/地图/纯色/聊天记录等），纯标记不影响去留，落库到 `ProjectPhoto.llm_is_junk`、供最终预览页一键清理。**容器里 `scorer` 一行绑定即可切 `CloudRelayScorer`，业务流程不动。**
 
 桌面端：扫描、读 EXIF、复制副本、归档、删除等**文件操作已下沉到 sidecar**（Python，统一管 `{KEEPER_HOME}` 数据根）。Rust 壳（`src-tauri/src/lib.rs`）只保留需要原生 GUI 的命令：`pick_folder`（目录选择对话框）、`open_path`（打开输出目录）、`exit_app`。前端用 **vue-router** 多页流程（`pages/*`：项目主页 / 新建 / 分组列表 / 组详情 / 完成），状态在 Pinia（`engine` 连接态、`projects` 项目/组/PK——权威在 sidecar，前端每步操作后用服务端返回刷新）；`api.ts` 镜像上面两类端点。
 
@@ -154,6 +156,8 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 **项目化选片工作流（sqlite 持久化）已落地**：以项目为单位，源图**递归**复制副本到 `{KEEPER_HOME}/workspace/{名}`（改名为随机 UUID、扁平存放，保护原文件）→ 分组 → 逐组评测（层①+层②，自动分通过/未通过）→ 用户裁决（救回 + A/B 擂台 PK 四结局 + 手动改判 + 确认）→ 完成时把「通过」按原始相对路径**还原目录树+原名**复制到 `~/Pictures/Keeper/{名}` 并清理 workspace。全程每步落库，可随时退出/恢复（见 `service/project_service.py`、`service/pk_service.py`、前端 `pages/*` + `stores/projects.ts`）。拍摄地经 GPS+在线反查展示（尽力而为）。
 
 分组已接入人脸身份（ArcFace 人脸集合相似度）拆开「同场景不同人」，多人合影按「是不是同一拨人」区分。
+
+层② 杂图标记（`is_junk` 截图/地图/纯色/聊天记录等非摄影图片）已落地，纯标记不改去留/分数/漏斗，供最终预览页一键清理。完成前的最终预览页已落地（跨组拍平 kept/discarded 两区，二次去留批量操作、一键勾选杂图、大图浮层）。
 
 尚未落地：
 - `CloudRelayScorer`（商业版云端中转，按 `Scorer` 协议新增实现 + 切配置即可，业务流程不改）。
