@@ -86,6 +86,26 @@ dir = "apps/desktop"
 # 会提示设置密码：设了的话私钥密码即 CI secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD。
 run = "pnpm tauri signer generate -w ~/.tauri/keeper-updater.key"
 
+# ---- desktop 质量门禁（CI 与发版前共用，命令统一走 mise）----
+[tasks.desktop-install]
+description = "安装 desktop（apps/desktop）前端依赖"
+run = "pnpm --dir apps/desktop install"
+
+[tasks.desktop-build]
+description = "构建 desktop 前端：vue-tsc 类型检查 + vite 打包（产出 apps/desktop/dist；tauri-build 要求 frontendDist 存在，clippy 才能编译）"
+dir = "apps/desktop"
+run = "pnpm build"
+
+[tasks.desktop-fmt-check]
+description = "检查 desktop Rust（src-tauri）代码格式，不改文件、不合规即失败"
+dir = "apps/desktop/src-tauri"
+run = "cargo fmt --all -- --check"
+
+[tasks.desktop-clippy]
+description = "desktop Rust（src-tauri）clippy 静态检查，-D warnings 把告警当错误"
+dir = "apps/desktop/src-tauri"
+run = "cargo clippy --all-targets -- -D warnings"
+
 [tasks.site-install]
 description = "安装官网（apps/website）前端依赖"
 dir = "apps/website"

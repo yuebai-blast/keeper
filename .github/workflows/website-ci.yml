@@ -1,0 +1,28 @@
+name: Website CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一 PR 的新提交取消旧任务；main 上不取消，保留完整记录
+concurrency:
+  group: ci-website-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+      - name: Install toolchain
+        run: mise install
+      - name: Install deps
+        run: mise run site-install
+      # site-build = vue-tsc --noEmit && vite build：类型检查 + 生产构建一并验证
+      - name: Build (typecheck + vite build)
+        run: mise run site-build
+      - name: Test
+        run: mise run site-test

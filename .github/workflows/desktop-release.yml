@@ -16,7 +16,7 @@ jobs:
             platform: darwin-aarch64
           - os: macos-15-intel   # Intel (x86_64)，macos-13 已于 2025-12 退役，这是 Actions 最后的 x86_64 镜像（支持到 2027-08）
             platform: darwin-x86_64
-          - os: windows-latest   # Windows (x86_64)
+          - os: windows-2022     # Windows (x86_64)，钉死版本保证可复现
             platform: windows-x86_64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -28,6 +28,14 @@ jobs:
       - uses: jdx/mise-action@v2
       - run: mise install
       - run: mise run install
+      # 发版前质量门禁：前端类型检查 + Rust 格式/clippy，不过不许出包。
+      # 在打包矩阵的每个 OS 上各跑一遍，顺带覆盖平台相关问题。
+      - name: Build frontend (typecheck + dist)
+        run: mise run desktop-build
+      - name: Rust format check
+        run: mise run desktop-fmt-check
+      - name: Rust clippy
+        run: mise run desktop-clippy
       - run: mise run bundle-sidecar
       - run: mise run stage-sidecar
       - name: Build Tauri app
