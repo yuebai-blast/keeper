@@ -97,13 +97,13 @@ onUnmounted(() => window.clearTimeout(enterTimer));
         <!-- 首次下载确认 -->
         <div v-else-if="view === 'consent'" key="consent" class="stage">
           <p class="banner">
-            首次启动 · 需要为你下载本地 AI 模型<em>仅此一次，下载后完全离线运行，照片不出本地</em>
+            首次启动 · 需要为你下载本地 AI 模型<em>仅此一次，下载后本地流程离线运行，AI 精评仍需联网，照片不出本地</em>
           </p>
           <div class="consent-size">
             <span class="num">约 {{ expectedGb }} GB</span>
             <span class="unit">预估下载体量</span>
           </div>
-          <p class="hint">模型保存在 <code>~/.keeper/models</code>，请确保网络通畅与磁盘空间充足。</p>
+          <p class="hint">模型保存在应用缓存目录，请确保网络通畅与磁盘空间充足。</p>
           <div class="consent-actions">
             <button class="btn" @click="onDecline">不同意 · 退出</button>
             <button class="btn btn--primary" @click="onConsent">同意并开始下载</button>
@@ -114,7 +114,7 @@ onUnmounted(() => window.clearTimeout(enterTimer));
         <div v-else-if="view === 'loading'" key="loading" class="stage">
           <p v-if="engine.needsRepair" class="line warn">模型需要重新加载…</p>
           <p v-else-if="engine.firstRun" class="banner">
-            首次启动 · 正在为你下载本地 AI 模型<em>仅此一次，之后完全离线运行</em>
+            首次启动 · 正在为你下载本地 AI 模型<em>仅此一次，之后本地流程离线运行，AI 精评仍需联网</em>
           </p>
           <p v-else class="line">正在载入本地模型…</p>
 

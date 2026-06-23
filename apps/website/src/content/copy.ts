@@ -74,7 +74,7 @@ const zh: Copy = {
     reqTitle: "系统要求",
     reqs: [
       "macOS 11+（Apple 芯片）或 Windows 10+（x64）",
-      "首次启动联网，一次性下载约 1.6 GB 本地 AI 模型到 ~/.keeper/models，之后完全离线",
+      "首次启动联网，一次性下载约 1.6 GB 本地 AI 模型到应用缓存目录；之后本地流程离线，AI 精评仍需联网",
       "AI 精评需自备火山方舟（Ark）API key（可在应用内录入）",
     ],
     shotAlt: ["组详情：本地 + AI 评分与去留", "A/B 擂台：两两对决终选"],
@@ -156,7 +156,7 @@ const en: Copy = {
     reqTitle: "Requirements",
     reqs: [
       "macOS 11+ (Apple Silicon) or Windows 10+ (x64)",
-      "First launch downloads ~1.6 GB of local AI models to ~/.keeper/models, then runs fully offline",
+      "First launch downloads ~1.6 GB of local AI models to the app cache directory; the local pipeline then runs offline, while AI review still needs the network",
       "AI review needs your own Volcano Ark API key (entered in-app)",
     ],
     shotAlt: ["Group detail: local + AI scores and verdicts", "A/B arena: head-to-head final pick"],
