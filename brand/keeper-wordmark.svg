@@ -13,7 +13,7 @@
       <path d="M40 49 L60 65"/>
     </g>
   </g>
-  <text x="128" y="72" font-family="'Inter','Helvetica Neue',Arial,sans-serif" font-size="58" font-weight="650" letter-spacing="-1.5" fill="#1A1C22">Keeper</text>
-  <text x="334" y="72" font-family="'PingFang SC','Noto Sans SC',sans-serif" font-size="34" font-weight="500" letter-spacing="2" fill="#E7A23C">留影</text>
+  <text x="128" y="72" font-family="'Inter','Helvetica Neue',Arial,sans-serif" font-size="60" font-weight="600" letter-spacing="-1.5" fill="#1A1C22">Keeper</text>
+  <text x="334" y="72" font-family="'PingFang SC','Noto Sans SC',sans-serif" font-size="54" font-weight="500" letter-spacing="2" fill="#E7A23C">留影</text>
   <text x="130" y="104" font-family="'PingFang SC','Inter',sans-serif" font-size="17" font-weight="400" letter-spacing="0.5" fill="#73777F">本地优先的 AI 选片 · 你来留下那一张</text>
 </svg>
