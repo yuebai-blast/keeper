@@ -39,8 +39,37 @@ jobs:
           fi
           echo "✅ 版本一致：$TAG_VERSION"
 
+  # 先建好带「更新说明」的 Release，再让 build 往里塞安装包（build needs 它，避免被覆盖）。
+  # 更新说明两部分：① annotated tag 的注释（人工写的本次重点，置顶；轻量 tag 无注释则省略）；
+  # ② GitHub 自动生成的自上个 tag 以来的提交列表（generate_release_notes，body 会拼在其上方）。
+  release-notes:
+    needs: [verify-version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # 取全量历史 + tag 对象，才能读到 annotated tag 的注释
+      - name: Extract annotated tag message
+        run: |
+          set -euo pipefail
+          : > notes.md
+          # 仅 annotated tag 取注释；轻量 tag（直接指向 commit）会把 commit 信息当注释，故先判类型。
+          if [ "${{ github.ref_type }}" = "tag" ] && [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+          fi
+          echo "---- 顶部注释（可能为空）----"; cat notes.md
+      - name: Create release with notes
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md            # tag 注释置顶；为空则只剩下方自动生成部分
+          generate_release_notes: true   # GitHub 自动列出自上个 tag 以来的提交
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
-    needs: [verify-desktop, verify-sidecar, verify-version]   # 三道门禁全绿才出包
+    needs: [verify-desktop, verify-sidecar, verify-version, release-notes]   # 门禁全绿 + Release 已建才出包
     permissions:
       contents: write   # 让 GITHUB_TOKEN 能创建/写入 Release
     strategy:

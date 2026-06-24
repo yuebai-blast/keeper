@@ -84,6 +84,54 @@ mise run stage-sidecar
 pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
 """
 
+[tasks.desktop-release]
+description = "发布 desktop：校验→改版本号→提交→打 tag→推送触发 CI 出包。用法：mise run desktop-release 0.1.6 [\"本次更新说明\"]"
+# 发版动作只在本地这一步：改 tauri.conf.json5 版本号 + 打 desktop-v<版本> tag 推上去，
+# 由 .github/workflows/desktop-release.yml（tag 触发）跑门禁→双平台出包→建 Release。
+# 第二参数（可选）写进 annotated tag 注释，会展示在 GitHub Release 顶部；留空则只展示自动生成的提交列表。
+shell = "bash -c"
+usage = '''
+arg "<version>" help="目标版本号，如 0.1.6（不带 desktop-v 前缀）"
+arg "[message]" help="本次更新说明（写入 annotated tag，置顶展示在 Release）；留空则只有自动提交列表" default=""
+'''
+run = '''
+set -euo pipefail
+VERSION="$usage_version"
+MESSAGE="$usage_message"
+TAG="desktop-v$VERSION"
+CONF="apps/desktop/src-tauri/tauri.conf.json5"
+
+# 前置校验：干净的 main、与 origin 同步、tag 未占用——发版前把脚下踩实。
+[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "❌ 必须在 main 分支发版"; exit 1; }
+[ -z "$(git status --porcelain)" ] || { echo "❌ 工作区不干净，请先提交或清理"; exit 1; }
+git fetch origin main --tags --quiet
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "❌ 本地 main 与 origin/main 不一致，请先同步"; exit 1; }
+! git rev-parse "$TAG" >/dev/null 2>&1 || { echo "❌ tag $TAG 已存在"; exit 1; }
+
+# 改版本号（tauri.conf.json5 顶层 version；CI 的 verify-version 会校验它与 tag 逐字一致）。
+# 该文件内仅顶层一行匹配 "version": "..."，故全量替换即只动这一行；用临时文件避开 sed -i 的 BSD/GNU 差异。
+OLD=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$CONF" | head -1)
+TMP=$(mktemp)
+sed -E "s/^([[:space:]]*\"version\"[[:space:]]*:[[:space:]]*\")[^\"]+/\1$VERSION/" "$CONF" > "$TMP" && mv "$TMP" "$CONF"
+echo "版本号 $OLD → $VERSION"
+
+# 提交版本号（独立一条，沿用现有约定）。
+git add "$CONF"
+git commit -m "chore(desktop): 版本号 $OLD → $VERSION"
+
+# 打 tag：有说明→annotated（注释进 Release 顶部）；无→轻量。
+if [ -n "$MESSAGE" ]; then
+  git tag -a "$TAG" -m "$MESSAGE"
+else
+  git tag "$TAG"
+fi
+
+# 推送：先 main 再 tag（tag 触发发版 workflow）。
+git push origin main
+git push origin "$TAG"
+echo "✅ 已推送 $TAG，CI 出包：https://github.com/yuebai-blast/keeper/actions"
+'''
+
 [tasks.gen-update-keys]
 description = "生成在线升级用的签名密钥对（一次性）：私钥→CI secret，公钥→tauri.conf.json5 的 plugins.updater.pubkey"
 dir = "apps/desktop"
