@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 页面一：填项目名 + 选源文件夹 → 预览数量/时间/拍摄地 → 确认创建（复制副本）→ 分组 → 进列表。
 import { invoke } from "@tauri-apps/api/core";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import type { ProjectPreview } from "../api";
 import { useProjectsStore } from "../stores/projects";
@@ -33,8 +33,34 @@ async function chooseFolder() {
   }
 }
 
+// 项目名校验（镜像后端 ProjectService._validate_name；后端才是权威闸口，这里只做即时提示）。
+// 名字会当作输出/副本目录名，须挡住会被 OS 特殊解释或建目录失败的情形（目标平台 macOS + Windows）。
+const WIN_RESERVED = new Set([
+  "CON", "PRN", "AUX", "NUL",
+  ...Array.from({ length: 9 }, (_, i) => `COM${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`),
+]);
+const MAC_BUNDLE_EXTS = [
+  ".app", ".bundle", ".framework", ".plugin", ".kext",
+  ".prefpane", ".qlgenerator", ".component", ".appex", ".xpc",
+];
+function nameError(raw: string): string {
+  const n = raw.trim();
+  if (!n) return "";
+  if (n.length > 100) return "项目名过长（最多 100 个字符）";
+  if (/[/\\]/.test(n) || n === "." || n === "..") return "项目名不能包含路径分隔符";
+  // eslint-disable-next-line no-control-regex
+  if (/[<>:"|?*\x00-\x1f]/.test(n)) return '项目名不能包含 < > : " | ? * 等特殊字符';
+  if (n.endsWith(".")) return "项目名不能以「.」结尾";
+  if (WIN_RESERVED.has(n.split(".")[0].toUpperCase())) return `「${n}」是系统保留名，请换一个`;
+  const lower = n.toLowerCase();
+  if (MAC_BUNDLE_EXTS.some((ext) => lower.endsWith(ext))) return "项目名不能以 .app / .bundle 等系统包后缀结尾";
+  return "";
+}
+const nameErr = computed(() => nameError(name.value));
+
 const canCreate = () =>
-  !!name.value.trim() && !!folder.value && !!preview.value && preview.value.count > 0 && !creating.value;
+  !!name.value.trim() && !nameErr.value && !!folder.value && !!preview.value && preview.value.count > 0 && !creating.value;
 
 async function create() {
   if (!canCreate()) return;
@@ -60,7 +86,8 @@ async function create() {
     <label class="field">
       <span>项目名称</span>
       <input v-model="name" type="text" placeholder="例如：林岚婚礼-上午" :disabled="creating" />
-      <small>名称需唯一，将作为输出文件夹名（输出到 ~/Pictures/Keeper/{名称}）。</small>
+      <small v-if="nameErr" class="name-err">{{ nameErr }}</small>
+      <small v-else>名称需唯一，将作为输出文件夹名（输出到 ~/Pictures/Keeper/{名称}）。</small>
     </label>
 
     <div class="field">
@@ -99,6 +126,7 @@ h1 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 2
 .field { display: flex; flex-direction: column; gap: 8px; }
 .field > span { font-size: 13px; color: var(--ink-dim); }
 .field small { color: var(--ink-faint); font-size: 12px; }
+.field small.name-err { color: var(--red); }
 input {
   font-family: var(--font-body);
   font-size: 14px;

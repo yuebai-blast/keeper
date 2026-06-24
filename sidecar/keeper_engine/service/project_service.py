@@ -62,6 +62,24 @@ from .ranking_service import RankingService
 from .scoring_service import ScoringService
 from .workspace_service import WorkspaceService
 
+# ── 项目名 → 目录名的非法情形（目标平台 macOS + Windows）──────────────────
+# 项目名会直接当 workspace 副本目录名与 ~/Pictures/Keeper/{名} 输出目录名，
+# 故必须挡住任何会被 OS 特殊解释或建目录失败的名字。后端是权威闸口，前端只镜像提示。
+_NAME_MAX_LEN = 100
+# Windows 保留设备名（不区分大小写，带扩展名也算保留，如 CON.txt）。
+_WIN_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+# Windows 文件名禁用字符（路径分隔符另行单独判断）。
+_WIN_FORBIDDEN_CHARS = '<>:"|?*'
+# macOS 会把这些扩展名结尾的目录当成「应用/包(bundle)」：Finder 画叉、双击当应用启动而打不开。
+_MACOS_BUNDLE_EXTS = (
+    ".app", ".bundle", ".framework", ".plugin", ".kext",
+    ".prefpane", ".qlgenerator", ".component", ".appex", ".xpc",
+)
+
 
 class ProjectService:
     """项目工作流编排核心。"""
@@ -582,8 +600,23 @@ class ProjectService:
         name = (name or "").strip()
         if not name:
             raise BizException(BizCode.INVALID_PROJECT_NAME, "项目名不能为空")
+        if len(name) > _NAME_MAX_LEN:
+            raise BizException(BizCode.INVALID_PROJECT_NAME, f"项目名过长（最多 {_NAME_MAX_LEN} 个字符）")
+        # 路径穿越 / 分隔符 / 空字节
         if any(sep in name for sep in ("/", "\\")) or name in (".", "..") or "\x00" in name:
             raise BizException(BizCode.INVALID_PROJECT_NAME, "项目名不能包含路径分隔符")
+        # Windows 文件名禁用字符 + 控制字符
+        if any(c in _WIN_FORBIDDEN_CHARS for c in name) or any(ord(c) < 0x20 for c in name):
+            raise BizException(BizCode.INVALID_PROJECT_NAME, '项目名不能包含 < > : " | ? * 等特殊字符')
+        # Windows 会静默吃掉结尾的「.」（空格已被 strip），导致存名与实际目录名不一致
+        if name.endswith("."):
+            raise BizException(BizCode.INVALID_PROJECT_NAME, "项目名不能以「.」结尾")
+        # Windows 保留设备名（CON/PRN/NUL/COM1…/LPT1…），带扩展名也算，按首段比较
+        if name.split(".", 1)[0].upper() in _WIN_RESERVED_NAMES:
+            raise BizException(BizCode.INVALID_PROJECT_NAME, f"项目名「{name}」是系统保留名，请换一个")
+        # macOS 包扩展名结尾：目录会被当成应用包，Finder 画叉、双击打不开
+        if name.lower().endswith(_MACOS_BUNDLE_EXTS):
+            raise BizException(BizCode.INVALID_PROJECT_NAME, "项目名不能以 .app / .bundle 等系统包后缀结尾")
         return name
 
     def _require_project(self, project_id: int) -> Project:

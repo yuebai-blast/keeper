@@ -184,6 +184,33 @@ def test_duplicate_name_rejected(svc, tmp_path):
     assert ei.value.biz == BizCode.PROJECT_NAME_DUPLICATE
 
 
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "", "   ",                                  # 空 / 纯空白
+        "a/b", "a\\b", ".", "..", "x\x00y",         # 路径分隔符 / 穿越 / 空字节
+        "a" * 101,                                  # 过长
+        "a<b", "a>b", "a:b", 'a"b', "a|b", "a?b", "a*b",  # Win 禁用字符
+        "trip.",                                    # 结尾点（Win 会吞掉）
+        "CON", "con", "nul", "COM1", "LPT9", "PRN.txt",   # Win 保留设备名（含带扩展名）
+        "婚礼.app", "x.App", "y.bundle", "z.FRAMEWORK",    # mac 包后缀（大小写不敏感）
+    ],
+)
+def test_invalid_project_name_rejected(bad_name):
+    with pytest.raises(BizException) as ei:
+        ProjectService._validate_name(bad_name)
+    assert ei.value.biz == BizCode.INVALID_PROJECT_NAME
+
+
+@pytest.mark.parametrize(
+    "good_name",
+    # 不能误伤：含 app/com 但非保留名/非包后缀、带普通扩展名、编号超出保留范围的名字
+    ["项目甲", "林岚婚礼-上午", "report v2", "COM0", "LPT10", "app store 素材", "a.jpg 整理"],
+)
+def test_valid_project_name_accepted(good_name):
+    assert ProjectService._validate_name(good_name) == good_name.strip()
+
+
 def test_delete_removes_workspace_and_db_resources(svc, tmp_path):
     """删除项目：清掉 workspace 副本 + 全部数据库资源（照片/组/PK/项目行），不动源。"""
     service, settings = svc

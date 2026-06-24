@@ -39,7 +39,7 @@ class BizCode(Enum):
     PROJECT_NAME_DUPLICATE = (410001, "项目名已存在")          # 原 409
     PROJECT_NOT_FOUND = (410002, "项目不存在")                # 原 404
     GROUP_NOT_FOUND = (410003, "分组不存在")                  # 原 404
-    INVALID_PROJECT_NAME = (410004, "项目名非法")             # 原 400：空 / 含路径分隔符
+    INVALID_PROJECT_NAME = (410004, "项目名非法")             # 空 / 路径分隔符 / 过长 / Win 禁用字符·保留名 / mac 包后缀
     NO_IMPORTABLE_IMAGES = (410005, "该文件夹内没有可导入的图片")  # 原 400
     INVALID_SOURCE_FOLDER = (410006, "源文件夹无效")          # 原 400：不存在 / 非目录
     GROUPS_NOT_ALL_CONFIRMED = (410007, "还有未确认的分组，无法完成")  # 原 400
