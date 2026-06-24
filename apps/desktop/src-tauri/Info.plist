@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  自定义 Info.plist 片段，Tauri 打包时会【合并】到它自动生成的 Info.plist 之上（见 docs/packaging.md）。
+  这里只开启「允许混合本地化」：基础名（CFBundleName/CFBundleDisplayName）由 productName 给为 Keeper，
+  中文系统则由 Resources/zh-Hans.lproj/InfoPlist.strings 覆盖显示为「留影」。
+  应用 bundle 文件名仍是 Keeper.app（路径不变），仅系统显示名按语言本地化——同微信「微信 / WeChat.app」。
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleAllowMixedLocalizations</key>
+  <true/>
+</dict>
+</plist>

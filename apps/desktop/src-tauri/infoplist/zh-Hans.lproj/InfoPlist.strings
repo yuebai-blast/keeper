@@ -1,0 +1,4 @@
+/* 简体中文系统下的应用显示名（Finder / 启动台 / 程序坞 / 菜单栏）。
+   bundle 文件名仍是 Keeper.app（路径不变），仅显示名本地化为「留影」。 */
+"CFBundleDisplayName" = "留影";
+"CFBundleName" = "留影";

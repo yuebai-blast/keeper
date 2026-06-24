@@ -1,0 +1,3 @@
+/* 英文（及其它语言回落）系统下的应用显示名，与基础名一致，显式声明便于本地化集合完整。 */
+"CFBundleDisplayName" = "Keeper";
+"CFBundleName" = "Keeper";

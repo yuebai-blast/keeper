@@ -16,7 +16,15 @@
     // 值=落到包内 resource_dir 下的子路径，即 macOS 的 Contents/Resources/keeper-sidecar/。
     // 该目录由 `mise run bundle-sidecar`（冻结 onedir）+ `mise run stage-sidecar`（整目录落位）产出。
     // 安装后，Rust 壳用 app.path().resolve(.., Resource) 解析内层可执行、std::process 拉起（见 src/lib.rs）。
-    "resources": { "binaries/keeper-sidecar": "keeper-sidecar" },
+    //
+    // infoplist/*.lproj/InfoPlist.strings：macOS 本地化显示名资源，落到 Contents/Resources/<lang>.lproj/。
+    // 中文系统显示「留影」、其它显示「Keeper」，bundle 文件名仍是 Keeper.app（路径不变）。
+    // 用显式逐文件映射（不用 "infoplist/**" glob——glob 不保证保留 .lproj 目录层级，恐两文件撞名）。
+    "resources": {
+      "binaries/keeper-sidecar": "keeper-sidecar",
+      "infoplist/zh-Hans.lproj/InfoPlist.strings": "zh-Hans.lproj/InfoPlist.strings",
+      "infoplist/en.lproj/InfoPlist.strings": "en.lproj/InfoPlist.strings",
+    },
 
     // 打包时额外产出「更新包」制品：macOS 的 .app.tar.gz（+ .sig 签名）、Windows 的 -setup.exe（+ .sig）。
     // 这些是 updater 下载替换用的产物，与给用户首装的 .dmg/.exe 并存。
