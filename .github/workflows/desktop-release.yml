@@ -66,7 +66,7 @@ jobs:
       - name: Build Tauri app
         working-directory: apps/desktop
         # 经 mise exec 调用，确保用上 mise 钉死的 pnpm（工具链强制走 mise）。
-        # --config 合并打包专用配置：把 sidecar 二进制打进包（externalBin）+ 产出带签名的更新制品
+        # --config 合并打包专用配置：把 sidecar onedir 目录打进包（bundle.resources）+ 产出带签名的更新制品
         #（createUpdaterArtifacts）。签名私钥由下方 env 从 secret 注入，缺失则构建失败（符合预期）。
         run: mise exec -- pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
         env:

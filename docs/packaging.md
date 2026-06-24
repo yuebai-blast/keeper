@@ -13,19 +13,23 @@ Keeper 是 monorepo，运行时由**两个进程**组成：
 | 进程 | 是什么 | 打包时怎么处理 |
 | :-- | :-- | :-- |
 | 桌面应用（壳 + 前端） | Tauri 2（Rust 编译出的原生程序）里嵌了 Vue 前端 | 编成平台原生可执行 + 安装包 |
-| sidecar（推理服务） | 一个 Python FastAPI 服务 | 用 PyInstaller **冻结成单个二进制**，再作为「外部二进制」塞进安装包 |
+| sidecar（推理服务） | 一个 Python FastAPI 服务 | 用 PyInstaller **冻结成 onedir 目录**，再作为 **bundle 资源（resources）** 整目录塞进安装包 |
 
-**关键难点**：用户机器上没有 Python 环境，也没有 pnpm/cargo。所以我们必须把 Python 服务连同它的一大堆依赖（torch、onnxruntime、insightface、pyiqa、opencv…）**冻结成一个不依赖系统 Python 的独立可执行文件**，再让 Tauri 把它当作 **sidecar（externalBin）** 一起打进安装包。安装后由 Rust 壳在启动时自动拉起它。
+**关键难点**：用户机器上没有 Python 环境，也没有 pnpm/cargo。所以我们必须把 Python 服务连同它的一大堆依赖（torch、onnxruntime、insightface、pyiqa、opencv…）**冻结成一份不依赖系统 Python 的独立产物**，再随应用打进安装包。安装后由 Rust 壳在启动时自动拉起它。
 
-### Tauri 的 sidecar / externalBin 机制（务必理解）
+### 为什么是 onedir + resources，而不是 onefile + externalBin（务必理解）
 
-- 「sidecar」是 Tauri 的术语：随你的应用一起分发、由你的应用启动的**外部可执行程序**。
-- 在配置里你只写**基名** `binaries/keeper-sidecar`；Tauri 打包时会自动去找按当前平台 **target triple**（目标三元组）后缀命名的真实文件。
-  - 例：macOS Apple Silicon 上要找 `binaries/keeper-sidecar-aarch64-apple-darwin`
-  - Windows x64 上要找 `binaries/keeper-sidecar-x86_64-pc-windows-msvc.exe`
-- 这个带后缀的文件由我们用 PyInstaller 产出后**改名落位**到 `apps/desktop/src-tauri/binaries/`。
-- 安装后，Rust 壳用 `app.shell().sidecar("keeper-sidecar")` 把它拉起（仅 release 构建，见 `src-tauri/src/lib.rs`）。
-- 这条链路要能成立，还需要在 `capabilities/default.json5` 里**显式授权** `shell:allow-spawn`（Tauri 2 默认不给任何原生能力）。
+PyInstaller 有两种冻结模式：**onefile**（压缩成单个自解压可执行）和 **onedir**（一个含引导器 + `_internal/` 库目录的文件夹）。本项目**用 onedir**：
+
+- onefile 每次启动都要把整包自解压到临时目录才能跑（实测纯解压就 ~24s，**每次启动都付**），首装还叠加未公证大二进制的 macOS Gatekeeper 全盘扫描，放大成几分钟「服务未就绪」。
+- onedir 库直接躺在包里，**去掉自解压**、二次启动近秒开；且产物是真实目录，构建完 `ls _internal/` 即可核对数据文件有没有漏收（onefile 是不透明 blob，缺文件只能等装机崩才发现）。
+
+**为什么不用 Tauri 的 sidecar / externalBin？** externalBin（Tauri 术语「sidecar」）是把外部程序打进包的便捷通道，但它**只认单个二进制文件**，承载不了 onedir 的「引导器 + `_internal/` 目录」布局——这正是当初为迁就 externalBin 才选 onefile 的原因。改 onedir 后改走更通用的 `bundle.resources`：
+
+- 在打包专用配置里写 `"resources": { "binaries/keeper-sidecar": "keeper-sidecar" }`：键=源目录（相对 `src-tauri/`），值=落到包内 `resource_dir` 下的子路径（macOS 即 `Contents/Resources/keeper-sidecar/`）。
+- 该目录由 `mise run bundle-sidecar`（冻结 onedir）+ `mise run stage-sidecar`（整目录落位到 `apps/desktop/src-tauri/binaries/keeper-sidecar`）产出；**每平台 CI 各自构建，内容平台专属，不再按 target triple 命名**。
+- 安装后，Rust 壳用 `app.path().resolve("keeper-sidecar/keeper-sidecar", BaseDirectory::Resource)` 解析出内层可执行，再用 **`std::process::Command`** 拉起（仅 release 构建，见 `src-tauri/src/lib.rs`）。`_internal/` 就在可执行旁边，由 PyInstaller 引导器自动定位。
+- 不再需要 `shell:allow-spawn` 权限或 `tauri-plugin-shell`：std 直接拉起，少一项原生能力下放。**代价**：Tauri 不再托管该子进程生命周期，壳需在退出时（`RunEvent::Exit` / `exit_app`）显式 `kill` 掉它，避免留孤儿进程。
 
 ---
 
@@ -44,8 +48,8 @@ mise run package    # 打包：冻结 sidecar → 落位 binaries → tauri buil
 `mise run package` 串了三步（定义在 `mise.toml` 的 `[tasks.package]`）：
 
 ```bash
-mise run bundle-sidecar     # ① PyInstaller 冻结 sidecar
-mise run stage-sidecar      # ② 按 target triple 改名，放进 binaries/
+mise run bundle-sidecar     # ① PyInstaller 冻结 sidecar（onedir）
+mise run stage-sidecar      # ② 整目录落位到 binaries/keeper-sidecar
 pnpm tauri build --config src-tauri/tauri.bundle.conf.json5   # ③ 出安装包
 ```
 
@@ -65,21 +69,21 @@ uv run pyinstaller keeper-sidecar.spec --noconfirm --clean
 - 入口是 `sidecar/entry.py`（冻结后没有 `python -m` 的概念，所以用显式入口调 `keeper_engine.main:main`）。
 - 配方在 `sidecar/keeper-sidecar.spec`：用 `collect_all` 把 torch / onnxruntime / insightface / pyiqa / cv2 / rawpy 等的子模块和数据文件全收进来；`dependency_injector` 是 Cython 扩展、静态分析探测不到，需显式 collect。
 - **模型权重不打包**：运行时首启会下载到 `~/.keeper/models`，保持安装包体积可控。
-- 产物：`sidecar/dist/keeper-sidecar`（单文件，`onefile=True`）。
+- 产物：`sidecar/dist/keeper-sidecar/`（**目录**，`onedir`：内含 `keeper-sidecar` 可执行 + `_internal/` 全部库与数据文件）。
 
-> 这一步最容易出问题（漏 hidden import / 缺数据文件）。改了 sidecar 依赖后，单独跑 `mise run bundle-sidecar` 再手动执行 `sidecar/dist/keeper-sidecar --port 8761` 验证能起来，比每次全量打包快得多。
+> 这一步最容易出问题（漏 hidden import / 缺数据文件）。改了 sidecar 依赖后，单独跑 `mise run bundle-sidecar`，先 `ls sidecar/dist/keeper-sidecar/_internal/` 核对该收的数据文件在不在，再手动执行 `sidecar/dist/keeper-sidecar/keeper-sidecar --port 8761` 验证能起来，比每次全量打包快得多。
 
 ### 步骤 ② 落位到 binaries/（`mise run stage-sidecar`）
 
-把上一步的单文件按当前机器的 target triple 改名，放到 Tauri 约定目录：
+把上一步的 onedir **整目录**拷到 Tauri 约定位置（onedir 走 `bundle.resources`、不再按 target triple 命名）：
 
 ```bash
-TRIPLE=$(rustc -vV | sed -n 's/host: //p')      # 当前平台三元组，如 aarch64-apple-darwin
-cp sidecar/dist/keeper-sidecar \
-   apps/desktop/src-tauri/binaries/keeper-sidecar-$TRIPLE      # Windows 会带 .exe
+DST=apps/desktop/src-tauri/binaries/keeper-sidecar
+rm -rf "$DST"
+cp -R sidecar/dist/keeper-sidecar "$DST"      # 整目录覆盖拷贝
 ```
 
-> `binaries/` 目录里的实际二进制是构建产物，**不入库**（仓库里只保留空目录占位）。
+> `binaries/` 目录里的实际产物是构建生成物，**不入库**（仓库里只保留空目录占位）。
 
 ### 步骤 ③ tauri build 出安装包
 
@@ -103,13 +107,13 @@ pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
 
 | 文件 | 何时加载 | 装了什么 |
 | :-- | :-- | :-- |
-| `src-tauri/tauri.conf.json5` | dev 和打包都加载（根配置） | 应用名/版本/窗口/图标/bundle 基础设置，**不含 externalBin** |
-| `src-tauri/tauri.bundle.conf.json5` | **仅打包**时用 `--config` 合并 | 只有 `bundle.externalBin`（把 sidecar 打进来） |
+| `src-tauri/tauri.conf.json5` | dev 和打包都加载（根配置） | 应用名/版本/窗口/图标/bundle 基础设置，**不含 sidecar resources** |
+| `src-tauri/tauri.bundle.conf.json5` | **仅打包**时用 `--config` 合并 | 只有 `bundle.resources`（把 sidecar 目录打进来）+ `createUpdaterArtifacts` |
 
 `--config` 会把后者**合并**到前者之上（字段冲突以 `--config` 为准）。
 
-**为什么不把 externalBin 直接写进根配置？**
-因为 externalBin 一旦写进根配置，`mise run app`（本地 dev）启动时 Tauri 会**强制要求** `binaries/` 下存在按 triple 命名的二进制，否则直接报错。而 dev 时 sidecar 是用 `mise run sidecar` 单独跑的、`binaries/` 是空的。把 externalBin 隔离到打包专用配置后，**本地 dev 零二进制依赖**，不必每次先冻结 sidecar。
+**为什么不把 sidecar `resources` 直接写进根配置？**
+因为它一旦写进根配置，`mise run app`（本地 dev）启动时 Tauri 会**强制要求** `binaries/keeper-sidecar` 存在，否则直接报错。而 dev 时 sidecar 是用 `mise run sidecar` 单独跑的、`binaries/` 是空的。把它隔离到打包专用配置后，**本地 dev 零依赖**，不必每次先冻结 sidecar。
 
 > 对应地，Rust 壳里也用 `if !cfg!(debug_assertions)` 区分：只有 release（打包）构建才自动拉起内置 sidecar；dev 构建不拉，交给 `mise run sidecar`。
 
@@ -154,6 +158,8 @@ apps/desktop/src-tauri/target/release/bundle/
 - **Windows**：未签名的安装包会触发 SmartScreen 警告。正式分发需要代码签名证书（OV/EV）。
 
 > 这些属于「对外发布」环节，当前 MVP 未配置。真要做时再在 `tauri.conf.json5` 的 `bundle` 段补 `macOS` / `windows` 子配置，并把证书/凭据通过环境变量注入（**绝不入库**）。
+>
+> ⚠️ onedir 注意：sidecar 的 `_internal/` 里有大量原生 `.so`/`.dylib`，macOS 公证要求**每个嵌套 mach-o 都被签名**。届时需对 `Contents/Resources/keeper-sidecar/` 下的二进制做深度签名（`codesign --deep` 或逐个签）后再公证，否则公证会失败。未公证分发则无此要求。
 
 ---
 
@@ -161,10 +167,10 @@ apps/desktop/src-tauri/target/release/bundle/
 
 | 现象 | 多半原因 / 处理 |
 | :-- | :-- |
-| `tauri build` 报找不到 `keeper-sidecar-<triple>` | 步骤 ② 没跑或 triple 不对；重跑 `mise run stage-sidecar`，确认 `binaries/` 里有对应文件 |
-| 安装后应用能开但功能转圈、连不上 sidecar | sidecar 没起来。看应用日志里 `[sidecar]` 开头的行（lib.rs 把 sidecar 的 stdout/stderr 转发了）；多半是 PyInstaller 漏了依赖 |
-| PyInstaller 冻结成功但单跑报 `ModuleNotFoundError` | 漏 hidden import；在 `keeper-sidecar.spec` 的 `collect_all` 列表或 `hiddenimports` 里补上，重跑 `mise run bundle-sidecar` |
-| dev（`mise run app`）报缺 externalBin | externalBin 被误写进了根配置；它应只在 `tauri.bundle.conf.json5` 里 |
+| `tauri build` 报找不到 `binaries/keeper-sidecar` resource | 步骤 ② 没跑；重跑 `mise run stage-sidecar`，确认 `binaries/keeper-sidecar/` 目录存在且内含可执行 |
+| 安装后应用能开但功能转圈、连不上 sidecar | sidecar 没起来。看应用日志里 `[sidecar]` 开头的行（lib.rs 把 sidecar 的 stdout/stderr 转发了）；多半是 PyInstaller 漏了依赖，或 resources 没把 `_internal/` 子结构带全 |
+| PyInstaller 冻结成功但单跑报 `ModuleNotFoundError` / 缺数据文件 | 漏 hidden import 或数据文件；在 `keeper-sidecar.spec` 的 `collect_all` 列表或 `hiddenimports` 里补上，重跑 `mise run bundle-sidecar`，`ls dist/keeper-sidecar/_internal/` 复核 |
+| dev（`mise run app`）报缺 `binaries/keeper-sidecar` | sidecar `resources` 被误写进了根配置；它应只在 `tauri.bundle.conf.json5` 里 |
 | 改了配置但不生效 | 确认改的是 `.json5` 文件；JSON5（带注释）需要 `Cargo.toml` 里给 `tauri`/`tauri-build` 开了 `config-json5` feature |
 
 ---
@@ -177,7 +183,7 @@ apps/desktop/src-tauri/target/release/bundle/
 | `sidecar/keeper-sidecar.spec` | PyInstaller 冻结配方 |
 | `sidecar/entry.py` | 冻结入口 |
 | `apps/desktop/src-tauri/tauri.conf.json5` | Tauri 根配置（应用名/版本/窗口/图标/bundle 基础） |
-| `apps/desktop/src-tauri/tauri.bundle.conf.json5` | 打包专用：externalBin（sidecar） |
-| `apps/desktop/src-tauri/capabilities/default.json5` | 授权 `shell:allow-spawn` 拉起 sidecar |
+| `apps/desktop/src-tauri/tauri.bundle.conf.json5` | 打包专用：sidecar `resources`（onedir 整目录）+ 更新制品 |
+| `apps/desktop/src-tauri/capabilities/default.json5` | 主窗口权限清单（sidecar 改 std 拉起后，已无需 `shell:allow-spawn`） |
 | `apps/desktop/src-tauri/Cargo.toml` | 开 `config-json5` feature；声明壳依赖/插件 |
-| `apps/desktop/src-tauri/src/lib.rs` | release 构建下自动拉起内置 sidecar |
+| `apps/desktop/src-tauri/src/lib.rs` | release 构建下从 resource 路径用 `std::process` 拉起内置 sidecar，退出时 kill |

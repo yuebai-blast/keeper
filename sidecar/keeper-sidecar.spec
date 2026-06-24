@@ -1,4 +1,8 @@
-# PyInstaller 配置：把 Keeper sidecar 冻结成「单文件」可执行（Tauri sidecar 机制需单个二进制）。
+# PyInstaller 配置：把 Keeper sidecar 冻结成「单目录」（onedir）——一个含可执行 + _internal/ 的目录。
+# 不用 onefile：onefile 每次启动都把整包自解压到临时目录（实测 ~24s，且每次都付），首装还叠加
+# 未公证大二进制的 Gatekeeper 全盘扫描，放大成几分钟。onedir 库直接躺在包里，去掉自解压、二次启动近秒开；
+# 且产物是真实目录，构建完即可 `ls _internal/` 核对数据文件是否漏收（onefile 是不透明 blob、装机才崩）。
+# Tauri 侧不再走 externalBin（只认单文件），改由 bundle.resources 整目录随包 + Rust 从 resource 路径拉起。
 # torch / onnxruntime / pyiqa / insightface / rawpy / opencv 等需 collect 全部子模块与数据文件。
 # 模型权重不打包，运行时下载到 ~/.keeper/models。
 from PyInstaller.utils.hooks import collect_all, collect_submodules
@@ -33,13 +37,21 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
+# onedir：EXE 只放引导器（exclude_binaries=True 把库剔出 exe），库与数据文件交给 COLLECT 落到目录。
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="keeper-sidecar",
     console=True,
-    onefile=True,
+)
+# COLLECT 产出目录 dist/keeper-sidecar/（内含 keeper-sidecar 可执行 + _internal/ 全部库与数据）。
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="keeper-sidecar",
 )

@@ -13,12 +13,7 @@
     "dialog:default",             // dialog 插件：原生对话框（目录选择）
     "updater:default",            // updater 插件：检查 / 下载 / 安装更新
     "process:allow-restart",      // process 插件：仅放行重启（更新装好后 relaunch），不下放任意进程控制
-    {
-      // 授权前端/壳以 sidecar 方式启动内置 keeper-sidecar，且【锁死】启动参数。
-      // 这是「打包后自动拉起本地推理服务」能成立的安全前提，与 externalBin 配套。
-      // allow 里的 name 必须与 externalBin 的基名一致；args 限定只能用这些参数启动。
-      "identifier": "shell:allow-spawn",
-      "allow": [{ "name": "binaries/keeper-sidecar", "sidecar": true, "args": ["--port", "8761"] }]
-    }
+    // 注：内置 keeper-sidecar 改由 Rust 壳用 std::process 从 resource 路径直接拉起（见 src/lib.rs），
+    // 不再走 Tauri shell 插件，故无需 shell:allow-spawn——少一项原生能力下放、攻击面更小。
   ]
 }

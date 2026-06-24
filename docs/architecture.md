@@ -12,7 +12,7 @@
 │  Rust 壳（Tauri 2.x）                                                  │
 │    · 文件系统访问：扫描照片目录、解码 RAW、读写 winners/losers          │
 │    · 本地状态持久化                                                     │
-│    · 以 sidecar(externalBin) 方式拉起 / 调度 Python 推理服务           │
+│    · 以 sidecar 子进程方式拉起 / 调度 Python 推理服务                 │
 │    │                                                                   │
 │    │ localhost HTTP（127.0.0.1）                                       │
 │    ▼                                                                   │

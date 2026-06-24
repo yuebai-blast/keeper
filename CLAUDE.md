@@ -26,7 +26,7 @@ monorepo，两个组件各自启动：
 
 ### 本地推理为什么是独立的 Python sidecar
 
-分组（DINOv2）、人脸（InsightFace）、美学/质量（pyiqa）、传统 CV 这些本地推理的生态全在 Python。Tauri 通过 `externalBin`（sidecar）机制把打包后的 Python 服务随应用分发，前端经 localhost HTTP 调用它。
+分组（DINOv2）、人脸（InsightFace）、美学/质量（pyiqa）、传统 CV 这些本地推理的生态全在 Python。打包时用 PyInstaller 把 Python 服务冻结成 onedir 目录，经 Tauri `bundle.resources` 随应用分发，Rust 壳从 resource 路径用 `std::process` 拉起，前端经 localhost HTTP 调用它（不用 externalBin——它只认单文件，承载不了 onedir，见 docs/packaging.md）。
 
 ### Scorer 可替换：今天直调，明天接云
 

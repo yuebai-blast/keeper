@@ -1,9 +1,9 @@
 // Keeper 桌面应用 —— Tauri「基础配置」。
 //
 // 这是 dev 与打包都会加载的根配置（`pnpm tauri dev` / `pnpm tauri build` 默认读它）。
-// 注意：本文件【刻意不含 externalBin】——本地开发不需要把 sidecar 二进制打进来，
+// 注意：本文件【刻意不含 sidecar resources】——本地开发不需要把 sidecar 目录打进来，
 // sidecar 由 `mise run sidecar` 单独起。打包时才用 --config 合并进 tauri.bundle.conf.json5，
-// 把 sidecar 二进制塞进安装包（见 docs/packaging.md）。
+// 把 sidecar onedir 目录塞进安装包（见 docs/packaging.md）。
 //
 // 能写注释是因为 Cargo.toml 里给 tauri/tauri-build 开了 config-json5 feature。
 {

@@ -1,14 +1,30 @@
-use tauri::Manager;
+use std::io::{BufRead, BufReader};
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use tauri::path::BaseDirectory;
+use tauri::{Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
-use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
 
 /// sidecar 鉴权 token（prod 启动时随机生成，经 env 给 sidecar、经 IPC 给前端）。dev 为空串=不鉴权。
 struct AuthToken(String);
 
 /// sidecar 监听端口（prod 启动时选随机空闲端口，经 --port 给 sidecar、经 IPC 给前端）。dev 固定 8761。
 struct SidecarPort(u16);
+
+/// 内置 sidecar 子进程句柄（onedir 改造后由 std::process 拉起，Tauri 不再托管，需自己在退出时 kill）。
+/// dev 下壳不拉 sidecar，恒为 None。
+struct SidecarChild(Mutex<Option<Child>>);
+
+/// kill 并回收内置 sidecar 子进程（退出路径调用，避免留孤儿进程）。多次调用安全（take 后为 None）。
+fn kill_sidecar(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<SidecarChild>() {
+        if let Some(mut child) = state.0.lock().expect("SidecarChild 锁中毒").take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
 
 /// dev 端口：dev 下壳不拉起 sidecar，用 `mise run sidecar` 起在固定 8761，前端与之对齐。
 const DEV_PORT: u16 = 8761;
@@ -50,9 +66,10 @@ fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 退出应用——用户在首次下载确认弹窗点「不同意」时调用。
+/// 退出应用——用户在首次下载确认弹窗点「不同意」时调用。先杀内置 sidecar，再退。
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
+    kill_sidecar(&app);
     app.exit(0);
 }
 
@@ -70,14 +87,14 @@ fn get_sidecar_port(state: tauri::State<SidecarPort>) -> u16 {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         // 在线升级：前端经 @tauri-apps/plugin-updater 查最新版/下载/校验/安装，
         // 装好后经 plugin-process 的 relaunch 重启生效。两者均为桌面端能力。
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .manage(SidecarChild(Mutex::new(None)))
         .setup(|app| {
             // dev 下不生成 token（前端取到空串=不发；mise run sidecar 也没 KEEPER_AUTH_TOKEN=不鉴权）。
             let token = if cfg!(debug_assertions) {
@@ -105,22 +122,50 @@ pub fn run() {
                     .expect("无法解析 app_cache_dir")
                     .join("models");
 
-                let sidecar = app
-                    .shell()
-                    .sidecar("keeper-sidecar")
-                    .expect("缺少 keeper-sidecar 可执行")
+                // onedir 改造：sidecar 整目录经 bundle.resources 随包进 resource_dir。
+                // 解析内层可执行（Windows 带 .exe），_internal/ 就在它旁边、由引导器自动定位。
+                let exe_rel = if cfg!(windows) {
+                    "keeper-sidecar/keeper-sidecar.exe"
+                } else {
+                    "keeper-sidecar/keeper-sidecar"
+                };
+                let exe = app
+                    .path()
+                    .resolve(exe_rel, BaseDirectory::Resource)
+                    .expect("无法解析内置 keeper-sidecar 路径");
+
+                // 用 std::process 直接拉起（不走 Tauri sidecar——externalBin 只认单文件，承载不了 onedir）。
+                // 代价：Tauri 不再托管其生命周期，需自己在退出时 kill（见 kill_sidecar / RunEvent::Exit）。
+                let mut child = Command::new(&exe)
                     .args(["--port", &port.to_string()])
                     .env("KEEPER_AUTH_TOKEN", &token)
                     .env("KEEPER_HOME", data_dir)
-                    .env("KEEPER_MODELS_DIR", models_dir);
-                let (mut rx, _child) = sidecar.spawn().expect("无法启动 keeper-sidecar");
-                tauri::async_runtime::spawn(async move {
-                    while let Some(event) = rx.recv().await {
-                        if let CommandEvent::Stderr(line) | CommandEvent::Stdout(line) = event {
-                            eprintln!("[sidecar] {}", String::from_utf8_lossy(&line));
+                    .env("KEEPER_MODELS_DIR", models_dir)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .expect("无法启动 keeper-sidecar");
+
+                // 逐行把 sidecar 的 stdout/stderr 转发到壳的 stderr（前缀 [sidecar]），便于诊断。
+                if let Some(out) = child.stdout.take() {
+                    std::thread::spawn(move || {
+                        for line in BufReader::new(out).lines().map_while(Result::ok) {
+                            eprintln!("[sidecar] {line}");
                         }
-                    }
-                });
+                    });
+                }
+                if let Some(err) = child.stderr.take() {
+                    std::thread::spawn(move || {
+                        for line in BufReader::new(err).lines().map_while(Result::ok) {
+                            eprintln!("[sidecar] {line}");
+                        }
+                    });
+                }
+
+                *app.state::<SidecarChild>()
+                    .0
+                    .lock()
+                    .expect("SidecarChild 锁中毒") = Some(child);
             }
             Ok(())
         })
@@ -131,6 +176,13 @@ pub fn run() {
             get_auth_token,
             get_sidecar_port
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // 应用退出时 kill 内置 sidecar，避免留孤儿进程（std 子进程 Tauri 不托管）。
+    app.run(|app, event| {
+        if let RunEvent::Exit = event {
+            kill_sidecar(app);
+        }
+    });
 }
