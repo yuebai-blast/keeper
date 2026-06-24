@@ -95,7 +95,7 @@ jobs:
       - name: Create release with notes
         uses: softprops/action-gh-release@v2
         with:
-          name: Keeper v${{ steps.body.outputs.version }}   # 标题（header）放版本号；默认是 tag 名，不好看
+          name: Keeper desktop v${{ steps.body.outputs.version }}   # 标题带组件名+版本号（monorepo 多组件要区分）；默认是 tag 名，不好看
           body_path: notes.md                               # 正文（body）：tag 注释置顶 + 分类变更日志
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
