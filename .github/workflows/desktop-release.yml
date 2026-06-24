@@ -41,7 +41,7 @@ jobs:
 
   # 先建好带「更新说明」的 Release，再让 build 往里塞安装包（build needs 它，避免被覆盖）。
   # 更新说明两部分：① annotated tag 的注释（人工写的本次重点，置顶；轻量 tag 无注释则省略）；
-  # ② GitHub 自动生成的自上个 tag 以来的提交列表（generate_release_notes，body 会拼在其上方）。
+  # ② 按约定式提交类型分类的变更日志（mikepenz COMMIT 模式，自动取上个 tag→本 tag）。
   release-notes:
     needs: [verify-version]
     runs-on: ubuntu-latest
@@ -50,21 +50,49 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0   # 取全量历史 + tag 对象，才能读到 annotated tag 的注释
-      - name: Extract annotated tag message
+          fetch-depth: 0   # COMMIT 模式按提交构建日志 + 读 annotated tag 注释，均需全量历史
+      - name: Build categorized changelog
+        id: changelog
+        # COMMIT 模式：直接按提交构建（本仓直推 main、无 PR），不需要 generate_release_notes。
+        # label_extractor 从 commit 标题正则抽出类型($1)；categories 只列要展示的类型，
+        # 其余（docs/chore/ci/build/style/test）抽到的标签无对应 category → 落 uncategorized，
+        # 模板只输出 #{{CHANGELOG}}（各 category 之和）→ 这些噪声类型被自然过滤掉。
+        uses: mikepenz/release-changelog-builder-action@v6
+        with:
+          mode: COMMIT
+          configurationJson: |
+            {
+              "template": "#{{CHANGELOG}}",
+              "categories": [
+                { "title": "### ✨ 新功能", "labels": ["feat"] },
+                { "title": "### 🐛 修复", "labels": ["fix"] },
+                { "title": "### ⚡ 性能", "labels": ["perf"] },
+                { "title": "### ♻️ 重构", "labels": ["refactor"] },
+                { "title": "### ⏪ 回退", "labels": ["revert"] }
+              ],
+              "label_extractor": [
+                { "pattern": "^(feat|fix|perf|refactor|revert|build|chore|ci|docs|style|test)[(!:]", "on_property": "title", "target": "$1" }
+              ]
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble release body (annotated tag note on top)
+        env:
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         run: |
           set -euo pipefail
           : > notes.md
-          # 仅 annotated tag 取注释；轻量 tag（直接指向 commit）会把 commit 信息当注释，故先判类型。
+          # annotated tag 注释置顶（人工写的本次重点）；轻量 tag（直接指向 commit）跳过。
           if [ "${{ github.ref_type }}" = "tag" ] && [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
-            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" >> notes.md
+            printf '\n\n' >> notes.md
           fi
-          echo "---- 顶部注释（可能为空）----"; cat notes.md
+          printf '%s\n' "$CHANGELOG" >> notes.md   # 经 env 传入，避免 ${{ }} 直插脚本被特殊字符破坏
+          echo "---- release 正文 ----"; cat notes.md
       - name: Create release with notes
         uses: softprops/action-gh-release@v2
         with:
-          body_path: notes.md            # tag 注释置顶；为空则只剩下方自动生成部分
-          generate_release_notes: true   # GitHub 自动列出自上个 tag 以来的提交
+          body_path: notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
