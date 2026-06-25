@@ -4,13 +4,14 @@ import { useI18n } from "../i18n";
 import { useRelease } from "../composables/useRelease";
 
 const { t } = useI18n();
-const { loading, failed, version, urlFor, primaryKey, releasesLatest } = useRelease();
+const { version, urlFor, primaryKey, releasesLatest } = useRelease();
 
-// 主按钮：识别到系统就指向对应产物，否则兜底到 Releases 页
+// 系统识别同步完成（navigator.userAgent），首屏即可定按钮文案与链接，无加载态闪烁。
+// 链接：识别到 mac/windows 就指向对应平台直链（urlFor 在版本号未到位时自带 Releases 页兜底）；
+//       其它系统（Linux 等）无对应产物，直接引导到 Releases 页。
 const primaryHref = computed(() => (primaryKey ? urlFor(primaryKey) : releasesLatest));
 const primaryLabel = computed(() => {
-  if (loading.value) return t.value.hero.detecting;
-  if (failed.value || !primaryKey) return t.value.hero.fallbackPrimary;
+  if (!primaryKey) return t.value.hero.fallbackPrimary;
   const osName = primaryKey === "windows" ? "Windows" : "macOS";
   return t.value.hero.primaryPrefix + osName;
 });
@@ -33,7 +34,7 @@ const c = computed(() => t.value.hero);
           <a class="btn" href="#download">{{ c.otherPlatforms }}</a>
         </div>
         <p class="meta">
-          <span v-if="version">{{ version }} · </span>{{ c.meta }}
+          <span v-if="version">v{{ version }} · </span>{{ c.meta }}
         </p>
       </div>
 

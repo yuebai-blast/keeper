@@ -11,7 +11,7 @@ export interface Copy {
   hero: {
     kicker: string; titleA: string; titleB: string; lede: string;
     primaryPrefix: string; otherPlatforms: string;
-    detecting: string; fallbackPrimary: string; meta: string;
+    fallbackPrimary: string; meta: string;
     wallBadge: string; keep: string; cut: string; polaroidCap: string;
   };
   principles: { kicker: string; title: string; items: { title: string; body: string; tone: "green" | "red" }[] };
@@ -36,7 +36,6 @@ const zh: Copy = {
     lede: "相似连拍自动归组，两层级联漏斗为每组递上候选——照片不出本地，机器不替你做最终淘汰。留谁，你在 A/B 擂台上说了算。",
     primaryPrefix: "下载 Keeper · ",
     otherPlatforms: "其它平台",
-    detecting: "正在识别系统…",
     fallbackPrimary: "前往下载",
     meta: "免费 · 支持 macOS / Windows",
     wallBadge: "9 张 → 留 2 张",
@@ -118,7 +117,6 @@ const en: Copy = {
     lede: "Burst shots are grouped automatically; a two-stage funnel hands you the candidates. Photos never leave your machine, and the machine never makes the final cut — you do, in the A/B arena.",
     primaryPrefix: "Download Keeper · ",
     otherPlatforms: "Other platforms",
-    detecting: "Detecting your OS…",
     fallbackPrimary: "Go to downloads",
     meta: "Free · macOS / Windows",
     wallBadge: "9 shots → keep 2",

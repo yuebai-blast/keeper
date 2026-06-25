@@ -13,7 +13,7 @@ const c = computed(() => t.value.download);
     <div class="container">
       <p class="section-kicker">{{ c.kicker }}</p>
       <h2 class="section-title">{{ c.title }}</h2>
-      <p class="section-lede">{{ c.lede }}<span v-if="version"> · {{ version }}</span></p>
+      <p class="section-lede">{{ c.lede }}<span v-if="version"> · v{{ version }}</span></p>
 
       <div class="grid">
         <div v-for="(it, i) in c.items" :key="i" class="card item">
