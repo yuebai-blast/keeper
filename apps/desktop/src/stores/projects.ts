@@ -36,6 +36,7 @@ import {
   type SelectionChange,
 } from "../api";
 import { useEngineStore } from "./engine";
+import { notifyGroupingDone } from "../util/notify";
 
 interface ProjectsState {
   list: ProjectView[];
@@ -168,6 +169,7 @@ export const useProjectsStore = defineStore("projects", {
       this.error = "";
       try {
         this.detail = await this._withProgress(id, () => groupProject(id), getGroupProgress);
+        notifyGroupingDone(this.detail.project.name, this.detail.groups.length);
       } catch (e) {
         this._fail(e);
       } finally {

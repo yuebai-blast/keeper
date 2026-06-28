@@ -13,6 +13,7 @@
     "dialog:default",             // dialog 插件：原生对话框（目录选择）
     "updater:default",            // updater 插件：检查 / 下载 / 安装更新
     "process:allow-restart",      // process 插件：仅放行重启（更新装好后 relaunch），不下放任意进程控制
+    "notification:default", // notification 插件：发系统通知（分组完成提醒）
     // 注：内置 keeper-sidecar 改由 Rust 壳用 std::process 从 resource 路径直接拉起（见 src/lib.rs），
     // 不再走 Tauri shell 插件，故无需 shell:allow-spawn——少一项原生能力下放、攻击面更小。
   ]

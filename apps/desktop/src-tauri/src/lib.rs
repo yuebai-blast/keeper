@@ -94,6 +94,7 @@ pub fn run() {
         // 装好后经 plugin-process 的 relaunch 重启生效。两者均为桌面端能力。
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(SidecarChild(Mutex::new(None)))
         .setup(|app| {
             // dev 下不生成 token（前端取到空串=不发；mise run sidecar 也没 KEEPER_AUTH_TOKEN=不鉴权）。
