@@ -7,11 +7,11 @@
 ; 约定：Tauri 的 NSIS 模板会【无条件插入】下面四个宏，故四个都必须定义；
 ;       用不到的留空，否则 makensis 会报「宏未定义」而打包失败。
 ;
-; 数据位置（bundle id = club.mint-ai.keeper）：
-;   KEEPER_HOME       = %APPDATA%\club.mint-ai.keeper            （Roaming：workspace 项目副本 / keeper.db / *_key）
-;   KEEPER_MODELS_DIR = %LOCALAPPDATA%\club.mint-ai.keeper\models （Local：本地模型权重，可能数 GB）
-;   WebView2 数据     = %LOCALAPPDATA%\club.mint-ai.keeper\EBWebView
-;   —— 三者都在 \club.mint-ai.keeper 下，故整删 Roaming + Local 这两个根目录即可一次清净。
+; 数据位置（bundle id = ai.mintpop.keeper）：
+;   KEEPER_HOME       = %APPDATA%\ai.mintpop.keeper            （Roaming：workspace 项目副本 / keeper.db / *_key）
+;   KEEPER_MODELS_DIR = %LOCALAPPDATA%\ai.mintpop.keeper\models （Local：本地模型权重，可能数 GB）
+;   WebView2 数据     = %LOCALAPPDATA%\ai.mintpop.keeper\EBWebView
+;   —— 三者都在 \ai.mintpop.keeper 下，故整删 Roaming + Local 这两个根目录即可一次清净。
 ;
 ; 备注：若日后想改成复用 Tauri 自带的「Delete application data」复选框来决定是否清理，
 ;       可把下面的弹窗逻辑替换为对模板复选框状态变量的判断（需以你当前 Tauri 版本的
@@ -35,7 +35,7 @@
       "是否同时删除 Keeper 的本地数据？$\r$\n$\r$\n将清除：项目副本(workspace)、数据库、本地模型缓存（可能占用数 GB）。$\r$\n若打算重装并保留这些数据，请选「否」。" \
       IDNO keeper_skip_cleanup
       ; 用户确认删除：两个数据根整删（Roaming + Local，含 WebView2 数据）
-      RMDir /r "$APPDATA\club.mint-ai.keeper"
-      RMDir /r "$LOCALAPPDATA\club.mint-ai.keeper"
+      RMDir /r "$APPDATA\ai.mintpop.keeper"
+      RMDir /r "$LOCALAPPDATA\ai.mintpop.keeper"
   keeper_skip_cleanup:
 !macroend
