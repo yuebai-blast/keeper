@@ -22,7 +22,7 @@ class ProgressTracker:
         self._by_project: dict[int, AssessProgress] = {}
 
     def begin(
-        self, project_id: int, group_key: str, group_index: int,
+        self, project_id: int, group_key: str | None, group_index: int,
         group_count: int, phase: AssessPhase, total: int,
     ) -> None:
         """开一组的某阶段（done 归零）。"""
