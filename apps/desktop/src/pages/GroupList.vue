@@ -125,10 +125,10 @@ async function doSubmit() {
         一键通过中… 第 {{ store.progress.group_index }} / {{ store.progress.group_count }} 组
       </div>
       <div class="prog-text">{{ progressText }}</div>
-      <div class="prog-bar">
+      <div class="prog-bar" :class="{ 'prog-bar--indet': store.progress.total === 0 }">
         <div
           class="prog-fill"
-          :style="{ width: store.progress.total ? `${(store.progress.done / store.progress.total) * 100}%` : '0%' }"
+          :style="{ width: store.progress.total ? `${(store.progress.done / store.progress.total) * 100}%` : '100%' }"
         />
       </div>
     </div>
@@ -218,4 +218,7 @@ async function doSubmit() {
 .prog-text { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-dim); }
 .prog-bar { height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; }
 .prog-fill { height: 100%; background: var(--amber); transition: width 0.3s ease; }
+/* 聚类阶段（total=0）：填满 + 脉动，表达「进行中但无精确百分比」的不确定态 */
+.prog-bar--indet .prog-fill { animation: prog-pulse 1.1s ease-in-out infinite; }
+@keyframes prog-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 </style>

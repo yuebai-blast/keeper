@@ -68,7 +68,7 @@ async function create() {
   localError.value = "";
   try {
     const project = await store.create(name.value.trim(), folder.value);
-    await store.runGroup(project.id); // 复制完成后立即分组
+    // 分组交由项目页（GroupList）统一触发并显示进度条——新建与「退出后恢复」共用一套进度 UI
     router.push(`/projects/${project.id}`);
   } catch (e) {
     localError.value = e instanceof Error ? e.message : String(e);
