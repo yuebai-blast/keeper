@@ -139,11 +139,16 @@ export const useProjectsStore = defineStore("projects", {
     },
 
     /** 新建项目并复制副本，返回新项目。 */
-    async create(name: string, sourceFolder: string): Promise<ProjectView> {
+    async create(
+      name: string,
+      sourceFolder: string,
+      guaranteePct?: number,
+      guaranteeFixed?: number,
+    ): Promise<ProjectView> {
       this.busy = true;
       this.error = "";
       try {
-        return await createProject(name, sourceFolder);
+        return await createProject(name, sourceFolder, guaranteePct, guaranteeFixed);
       } catch (e) {
         return this._fail(e);
       } finally {

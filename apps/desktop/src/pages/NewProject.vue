@@ -15,6 +15,8 @@ const folder = ref("");
 const preview = ref<ProjectPreview | null>(null);
 const scanning = ref(false);
 const creating = ref(false);
+const guaranteePct = ref(20);   // 保底百分比（整数 1–100），默认 20%
+const guaranteeFixed = ref(3);  // 保底固定值（>=1），默认 3
 const localError = ref("");
 
 async function chooseFolder() {
@@ -67,7 +69,9 @@ async function create() {
   creating.value = true;
   localError.value = "";
   try {
-    const project = await store.create(name.value.trim(), folder.value);
+    const project = await store.create(
+      name.value.trim(), folder.value, guaranteePct.value, guaranteeFixed.value,
+    );
     // 分组交由项目页（GroupList）统一触发并显示进度条——新建与「退出后恢复」共用一套进度 UI
     router.push(`/projects/${project.id}`);
   } catch (e) {
@@ -98,6 +102,21 @@ async function create() {
         <span v-else class="muted">尚未选择</span>
       </div>
       <small>导入时会复制一份副本到 workspace，绝不改动你的原文件。</small>
+    </div>
+
+    <div class="field">
+      <span>保底设置</span>
+      <div class="knobs">
+        <label class="knob">
+          <input v-model.number="guaranteePct" type="number" min="1" max="100" :disabled="creating" />
+          <span class="suffix">% 百分比</span>
+        </label>
+        <label class="knob">
+          <input v-model.number="guaranteeFixed" type="number" min="1" :disabled="creating" />
+          <span class="suffix">张 固定值</span>
+        </label>
+      </div>
+      <small>每组至少保留 max(照片总数 × 百分比, 固定值) 张；创建后不可更改。</small>
     </div>
 
     <div v-if="scanning" class="preview muted">正在扫描…</div>
@@ -163,4 +182,8 @@ input:focus { outline: none; border-color: var(--amber); }
 .warn { flex-basis: 100%; margin: 0; color: var(--ink-faint); font-size: 12px; }
 .err { color: var(--red); font-family: var(--font-mono); font-size: 13px; }
 .btn.lg { padding: 12px 24px; font-size: 14.5px; width: fit-content; }
+.knobs { display: flex; gap: 16px; flex-wrap: wrap; }
+.knob { display: flex; align-items: center; gap: 8px; }
+.knob input { width: 90px; }
+.knob .suffix { font-size: 13px; color: var(--ink-dim); }
 </style>

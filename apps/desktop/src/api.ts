@@ -73,6 +73,7 @@ export const BizCode = {
   INVALID_SOURCE_FOLDER: 410006,
   GROUPS_NOT_ALL_CONFIRMED: 410007,
   GROUP_HAS_UNRESOLVED_FAILURES: 410008,
+  INVALID_GUARANTEE_PARAMS: 410009,
 } as const;
 
 /** 评测进度阶段（镜像 sidecar enumeration/assess_phase.py，改任一端两边同步）。 */
@@ -416,8 +417,12 @@ export const previewFolder = (folder: string) =>
   post<ProjectPreview>("/projects/preview", { folder });
 
 /** 新建项目（校验名唯一 → 复制副本到 workspace）。 */
-export const createProject = (name: string, source_folder: string) =>
-  post<ProjectView>("/projects", { name, source_folder });
+export const createProject = (
+  name: string,
+  source_folder: string,
+  guarantee_pct?: number,
+  guarantee_fixed?: number,
+) => post<ProjectView>("/projects", { name, source_folder, guarantee_pct, guarantee_fixed });
 
 /** 项目列表（含状态）。 */
 export const listProjects = () => get<ProjectView[]>("/projects");
