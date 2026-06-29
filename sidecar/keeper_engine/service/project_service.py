@@ -296,7 +296,7 @@ class ProjectService:
     ) -> None:
         """统一评测内核：对缺分/失败且在 targets 内的图调模型，按全组最新分（失败按 0）
         重算 survivors/kept/selection。targets=None 表示全组（首评）。"""
-        project = self._projects.get(group.project_id)  # 读本项目的保底旋钮
+        project = self._require_project(group.project_id)  # 读本项目的保底旋钮
         pct, fixed = project.guarantee_pct, project.guarantee_fixed
         by_path = {p.workspace_path: p for p in photos}
         target_set = set(by_path) if targets is None else {p.workspace_path for p in targets}
