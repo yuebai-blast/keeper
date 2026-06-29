@@ -40,6 +40,8 @@ class ProjectView(BaseModel):
     location: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
+    guarantee_pct: float = 0.2
+    guarantee_fixed: int = 3
 
 
 class GroupSummary(BaseModel):

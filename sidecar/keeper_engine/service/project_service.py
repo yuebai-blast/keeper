@@ -55,7 +55,7 @@ from ..vo.score import Score
 from .assess_service import AssessService
 from .funnel_service import FunnelService
 from .grouping_service import GroupingService
-from .params_service import ParamsService
+from .params_service import DEFAULT_FIXED as _DEFAULT_FIXED, DEFAULT_PCT as _DEFAULT_PCT, ParamsService
 from .pk_service import PkService
 from .progress_tracker import ProgressTracker
 from .ranking_service import RankingService
@@ -147,9 +147,13 @@ class ProjectService:
             errors=errors,
         )
 
-    def create(self, name: str, source_folder: str) -> ProjectView:
-        """新建项目：校验名唯一 → 复制副本到 workspace → 落库照片与时间/拍摄地。"""
+    def create(
+        self, name: str, source_folder: str,
+        guarantee_pct: int | None = None, guarantee_fixed: int | None = None,
+    ) -> ProjectView:
+        """新建项目：校验名唯一 + 保底旋钮 → 复制副本到 workspace → 落库照片与时间/拍摄地。"""
         name = self._validate_name(name)
+        pct, fixed = self._validate_guarantee(guarantee_pct, guarantee_fixed)
         if self._projects.get_by_name(name):
             raise BizException(BizCode.PROJECT_NAME_DUPLICATE, f"项目名已存在：{name}")
         try:
@@ -188,11 +192,23 @@ class ProjectService:
             time_start=min(times) if times else None,
             time_end=max(times) if times else None,
             location=self._most_common(locations),
+            guarantee_pct=pct, guarantee_fixed=fixed,
         ))
         for r in rows:
             r.project_id = project.id
         self._photos.bulk_create(rows)
         return ProjectView.model_validate(project)
+
+    @staticmethod
+    def _validate_guarantee(pct: int | None, fixed: int | None) -> tuple[float, int]:
+        """校验并换算保底旋钮：百分比整数 1–100 → 小数；固定值整数 >=1。缺省取默认。"""
+        pct_int = int(_DEFAULT_PCT * 100) if pct is None else pct
+        fixed_int = _DEFAULT_FIXED if fixed is None else fixed
+        if not (1 <= pct_int <= 100):
+            raise BizException(BizCode.INVALID_GUARANTEE_PARAMS, f"保底百分比须在 1–100：{pct_int}")
+        if fixed_int < 1:
+            raise BizException(BizCode.INVALID_GUARANTEE_PARAMS, f"保底固定值须 >=1：{fixed_int}")
+        return pct_int / 100, fixed_int
 
     # ── 分组 ────────────────────────────────────────────────────────────────
 

@@ -19,6 +19,12 @@ class ProjectCreateRequest(BaseModel):
 
     name: str = Field(description="项目名（唯一，作为 workspace/输出子目录名）")
     source_folder: str = Field(description="源文件夹绝对路径")
+    guarantee_pct: int | None = Field(
+        default=None, description="保底百分比（整数 1–100，如 20 表示 20%）；缺省=用默认 20"
+    )
+    guarantee_fixed: int | None = Field(
+        default=None, description="保底固定值（整数 >=1）；缺省=用默认 3"
+    )
 
 
 class SelectionChange(BaseModel):

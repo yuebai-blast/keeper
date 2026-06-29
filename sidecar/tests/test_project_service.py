@@ -633,3 +633,42 @@ def test_group_reports_progress_done(svc, tmp_path):
     service.group(project.id)
     # 分组跑完后，共享进度侧信道停在 DONE（begin→tick→phase(CLUSTER)→done 全走过）
     assert service.get_progress(project.id).phase == AssessPhase.DONE.value
+
+
+# ── 保底旋钮（guarantee knobs）──────────────────────────────────────────────
+
+
+def test_create_persists_default_guarantee_knobs(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    project = service.create("默认旋钮", str(src))
+    assert project.guarantee_pct == 0.2
+    assert project.guarantee_fixed == 3
+
+
+def test_create_persists_custom_guarantee_knobs(svc, tmp_path):
+    service, settings = svc
+    src = _make_source(tmp_path, 4)
+    service.create("自定义旋钮", str(src), guarantee_pct=30, guarantee_fixed=5)
+    # 百分比以整数入参、以小数落库
+    from keeper_engine.config.database import Database
+    db = Database(settings)
+    row = ProjectMapper(db).get_by_name("自定义旋钮")
+    assert row.guarantee_pct == 0.3
+    assert row.guarantee_fixed == 5
+
+
+def test_create_rejects_out_of_range_guarantee_pct(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    with pytest.raises(BizException) as ei:
+        service.create("非法百分比", str(src), guarantee_pct=0)
+    assert ei.value.biz == BizCode.INVALID_GUARANTEE_PARAMS
+
+
+def test_create_rejects_out_of_range_guarantee_fixed(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    with pytest.raises(BizException) as ei:
+        service.create("非法固定值", str(src), guarantee_fixed=0)
+    assert ei.value.biz == BizCode.INVALID_GUARANTEE_PARAMS

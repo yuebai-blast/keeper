@@ -52,7 +52,7 @@ def create(
     req: ProjectCreateRequest,
     svc: ProjectService = Depends(Provide[Container.project_service]),
 ) -> ProjectView:
-    return svc.create(req.name, req.source_folder)
+    return svc.create(req.name, req.source_folder, req.guarantee_pct, req.guarantee_fixed)
 
 
 @router.get("", response_model=list[ProjectView])
