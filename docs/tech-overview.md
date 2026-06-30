@@ -16,7 +16,7 @@ monorepo，两个各自启动的组件：
 
 | 组件 | 路径 | 技术栈 |
 | :-- | :-- | :-- |
-| 桌面应用 | `apps/desktop/` | Tauri 2.x（Rust 壳）+ Vue 3 + TypeScript + Vite + Pinia |
+| 桌面应用 | `desktop/` | Tauri 2.x（Rust 壳）+ Vue 3 + TypeScript + Vite + Pinia |
 | 推理服务 | `sidecar/` | Python 3.11 + FastAPI；本地模型 + 大模型打分 |
 
 工具链版本与命令统一由 **mise**（`mise.toml`）管理，版本全部钉死（禁 `latest`）；Python 依赖走 **uv**（`pyproject.toml` + `uv.lock`），前端走 **pnpm**。
@@ -171,7 +171,7 @@ base = 0.45·TOPIQ + 0.20·CLIP-IQA+ + 0.35·主体锐度(归一)   → 0–100
 
 ### 2.10 HTTP API 契约
 
-服务只绑 `127.0.0.1:8761`（`--port` 改），CORS 仅放行 localhost / `tauri://localhost`。端点在 `controller/*`，前端镜像在 `apps/desktop/src/api.ts`——**改任一端两边都要同步**。
+服务只绑 `127.0.0.1:8761`（`--port` 改），CORS 仅放行 localhost / `tauri://localhost`。端点在 `controller/*`，前端镜像在 `desktop/src/api.ts`——**改任一端两边都要同步**。
 
 | 端点 | 作用 | 备注 |
 | :-- | :-- | :-- |

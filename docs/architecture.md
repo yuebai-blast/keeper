@@ -30,10 +30,10 @@
 
 ## 组件职责边界
 
-### 前端（apps/desktop/src）
+### 前端（desktop/src）
 纯 UI 与交互：导入目录、展示分组、缩略图画廊、大图查看、A/B 擂台、进度展示。不碰文件系统、不碰推理——一切经 Tauri IPC 走壳层。
 
-### Rust 壳（apps/desktop/src-tauri）
+### Rust 壳（desktop/src-tauri）
 - 唯一能直接访问用户文件系统的层：扫描照片、解码 RAW、归档（winners/losers）、读写本地进度。
 - 管理 Python sidecar 生命周期（启动/健康检查/关闭）。
 - 把前端请求转成对 sidecar 的 localhost 调用。

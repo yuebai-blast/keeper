@@ -28,7 +28,7 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#desktop-v}"
           # tauri.conf.json5 带注释，jq 解析不了；按行首缩进锚定顶层 "version" 键，避开注释里的同名字样。
           CONFIG_VERSION=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' \
-            apps/desktop/src-tauri/tauri.conf.json5 | head -1)
+            desktop/src-tauri/tauri.conf.json5 | head -1)
           echo "tag=$TAG_VERSION  config=$CONFIG_VERSION"
           if [ -z "$CONFIG_VERSION" ]; then
             echo "::error::无法从 tauri.conf.json5 解析出 version 字段"; exit 1
@@ -125,7 +125,7 @@ jobs:
       - run: mise run bundle-sidecar
       - run: mise run stage-sidecar
       - name: Build Tauri app
-        working-directory: apps/desktop
+        working-directory: desktop
         # 经 mise exec 调用，确保用上 mise 钉死的 pnpm（工具链强制走 mise）。
         # --config 合并打包专用配置：把 sidecar onedir 目录打进包（bundle.resources）+ 产出带签名的更新制品
         #（createUpdaterArtifacts）。签名私钥由下方 env 从 secret 注入，缺失则构建失败（符合预期）。
@@ -138,7 +138,7 @@ jobs:
         # macOS 的 .app.tar.gz 默认叫 Keeper.app.tar.gz；加 arch 后缀（aarch64）保持与下载页/历史命名一致。
         run: |
           set -euo pipefail
-          BUNDLE="apps/desktop/src-tauri/target/release/bundle"
+          BUNDLE="desktop/src-tauri/target/release/bundle"
           case "${{ matrix.platform }}" in
             darwin-aarch64) DIR="$BUNDLE/macos"; SUFFIX="aarch64" ;;
             windows-x86_64) DIR="$BUNDLE/nsis"; SUFFIX="" ;;
@@ -163,12 +163,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
-            apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz
-            apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
-            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
-            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
-            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz
+            desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+            desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            desktop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+            desktop/src-tauri/target/release/bundle/msi/*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload latest.json fragment

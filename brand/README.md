@@ -33,7 +33,7 @@
 - **留白**：标志四周至少保留一个「角标臂长」的安全边距。
 - **最小尺寸**：图标 ≥ 24px、字标组合 ≥ 120px 宽，更小请只用纯标志。
 - **字体**：字标当前用 `Inter` + `PingFang SC` 占位渲染；**正式交付前请把文字转曲（outline）**，避免缺字体时走样。
-- **生成应用图标**：以 `keeper-app-icon.svg` 为母版导出 png，再生成 Tauri 所需的 `icon.icns` / `icon.ico` / 各尺寸 png（放到 `apps/desktop/src-tauri/icons/`）。
+- **生成应用图标**：以 `keeper-app-icon.svg` 为母版导出 png，再生成 Tauri 所需的 `icon.icns` / `icon.ico` / 各尺寸 png（放到 `desktop/src-tauri/icons/`）。
 
 ## 本地预览
 

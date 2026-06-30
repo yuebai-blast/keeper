@@ -27,7 +27,7 @@ PyInstaller 有两种冻结模式：**onefile**（压缩成单个自解压可执
 **为什么不用 Tauri 的 sidecar / externalBin？** externalBin（Tauri 术语「sidecar」）是把外部程序打进包的便捷通道，但它**只认单个二进制文件**，承载不了 onedir 的「引导器 + `_internal/` 目录」布局——这正是当初为迁就 externalBin 才选 onefile 的原因。改 onedir 后改走更通用的 `bundle.resources`：
 
 - 在打包专用配置里写 `"resources": { "binaries/keeper-sidecar": "keeper-sidecar" }`：键=源目录（相对 `src-tauri/`），值=落到包内 `resource_dir` 下的子路径（macOS 即 `Contents/Resources/keeper-sidecar/`）。
-- 该目录由 `mise run bundle-sidecar`（冻结 onedir）+ `mise run stage-sidecar`（整目录落位到 `apps/desktop/src-tauri/binaries/keeper-sidecar`）产出；**每平台 CI 各自构建，内容平台专属，不再按 target triple 命名**。
+- 该目录由 `mise run bundle-sidecar`（冻结 onedir）+ `mise run stage-sidecar`（整目录落位到 `desktop/src-tauri/binaries/keeper-sidecar`）产出；**每平台 CI 各自构建，内容平台专属，不再按 target triple 命名**。
 - 安装后，Rust 壳用 `app.path().resolve("keeper-sidecar/keeper-sidecar", BaseDirectory::Resource)` 解析出内层可执行，再用 **`std::process::Command`** 拉起（仅 release 构建，见 `src-tauri/src/lib.rs`）。`_internal/` 就在可执行旁边，由 PyInstaller 引导器自动定位。
 - 不再需要 `shell:allow-spawn` 权限或 `tauri-plugin-shell`：std 直接拉起，少一项原生能力下放。**代价**：Tauri 不再托管该子进程生命周期，壳需在退出时（`RunEvent::Exit` / `exit_app`）显式 `kill` 掉它，避免留孤儿进程。
 
@@ -43,7 +43,7 @@ mise run install    # 一次性：同步 sidecar(uv) + desktop(pnpm) 依赖
 mise run package    # 打包：冻结 sidecar → 落位 binaries → tauri build 出安装包
 ```
 
-产物在 `apps/desktop/src-tauri/target/release/bundle/` 下（具体见 [§4](#4-产物在哪)）。
+产物在 `desktop/src-tauri/target/release/bundle/` 下（具体见 [§4](#4-产物在哪)）。
 
 `mise run package` 串了三步（定义在 `mise.toml` 的 `[tasks.package]`）：
 
@@ -78,7 +78,7 @@ uv run pyinstaller keeper-sidecar.spec --noconfirm --clean
 把上一步的 onedir **整目录**拷到 Tauri 约定位置（onedir 走 `bundle.resources`、不再按 target triple 命名）：
 
 ```bash
-DST=apps/desktop/src-tauri/binaries/keeper-sidecar
+DST=desktop/src-tauri/binaries/keeper-sidecar
 rm -rf "$DST"
 cp -R sidecar/dist/keeper-sidecar "$DST"      # 整目录覆盖拷贝
 ```
@@ -93,7 +93,7 @@ pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
 
 `tauri build` 做了三件事：
 
-1. 跑 `beforeBuildCommand`（`pnpm build`）把前端编成 `apps/desktop/dist/` 静态资源；
+1. 跑 `beforeBuildCommand`（`pnpm build`）把前端编成 `desktop/dist/` 静态资源；
 2. 用 cargo **release** 模式编译 Rust 壳，把前端资源和 sidecar 二进制一起嵌入；
 3. 按 `bundle.targets` 调用各平台打包器，产出安装包。
 
@@ -124,7 +124,7 @@ pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
 `tauri build` 完成后会打印每个安装包的绝对路径。产物根目录：
 
 ```
-apps/desktop/src-tauri/target/release/bundle/
+desktop/src-tauri/target/release/bundle/
 ```
 
 各平台产物（由 `tauri.conf.json5` 的 `bundle.targets: "all"` 决定，会生成当前平台支持的全部格式）：
@@ -182,8 +182,8 @@ apps/desktop/src-tauri/target/release/bundle/
 | `mise.toml` | `bundle-sidecar` / `stage-sidecar` / `package` 三个 task 的定义 |
 | `sidecar/keeper-sidecar.spec` | PyInstaller 冻结配方 |
 | `sidecar/entry.py` | 冻结入口 |
-| `apps/desktop/src-tauri/tauri.conf.json5` | Tauri 根配置（应用名/版本/窗口/图标/bundle 基础） |
-| `apps/desktop/src-tauri/tauri.bundle.conf.json5` | 打包专用：sidecar `resources`（onedir 整目录）+ 更新制品 |
-| `apps/desktop/src-tauri/capabilities/default.json5` | 主窗口权限清单（sidecar 改 std 拉起后，已无需 `shell:allow-spawn`） |
-| `apps/desktop/src-tauri/Cargo.toml` | 开 `config-json5` feature；声明壳依赖/插件 |
-| `apps/desktop/src-tauri/src/lib.rs` | release 构建下从 resource 路径用 `std::process` 拉起内置 sidecar，退出时 kill |
+| `desktop/src-tauri/tauri.conf.json5` | Tauri 根配置（应用名/版本/窗口/图标/bundle 基础） |
+| `desktop/src-tauri/tauri.bundle.conf.json5` | 打包专用：sidecar `resources`（onedir 整目录）+ 更新制品 |
+| `desktop/src-tauri/capabilities/default.json5` | 主窗口权限清单（sidecar 改 std 拉起后，已无需 `shell:allow-spawn`） |
+| `desktop/src-tauri/Cargo.toml` | 开 `config-json5` feature；声明壳依赖/插件 |
+| `desktop/src-tauri/src/lib.rs` | release 构建下从 resource 路径用 `std::process` 拉起内置 sidecar，退出时 kill |

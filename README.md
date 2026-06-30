@@ -56,7 +56,7 @@ keeper/
 │   └── architecture.md    # 三层架构 + Scorer 可替换设计 + 数据流
 ├── mise.toml              # 工具链钉死 + 命令（install / sidecar / app / test）
 ├── sidecar/               # Python 本地推理服务（FastAPI）
-└── apps/desktop/          # Tauri 桌面应用（Vue3 + TS 前端 + Rust 壳）
+└── desktop/          # Tauri 桌面应用（Vue3 + TS 前端 + Rust 壳）
 ```
 
 ## 快速开始

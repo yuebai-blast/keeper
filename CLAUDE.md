@@ -19,7 +19,7 @@ monorepo，两个组件各自启动：
 
 | 组件 | 路径 | 技术栈 | 职责 |
 | :-- | :-- | :-- | :-- |
-| 桌面应用 | `apps/desktop/` | Tauri 2.x（Rust 壳）+ Vue3 + TS + Vite + Pinia | 文件 IO / 读 RAW / UI / A/B 擂台 / 本地存储 / 调度 sidecar |
+| 桌面应用 | `desktop/` | Tauri 2.x（Rust 壳）+ Vue3 + TS + Vite + Pinia | 文件 IO / 读 RAW / UI / A/B 擂台 / 本地存储 / 调度 sidecar |
 | 推理服务 | `sidecar/` | Python 3.11 + FastAPI | 分组 + 本地评分（层①）+ 调大模型打分（层②） |
 
 数据流、Scorer 可替换设计、未来云端中转的插入点，详见 [docs/architecture.md](docs/architecture.md)。工程实现细节（分层、DI、就绪态、各部分算法、API 契约）详见 [docs/tech-overview.md](docs/tech-overview.md)。
@@ -55,7 +55,7 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 ## sidecar HTTP 契约（desktop ↔ sidecar 唯一接口）
 
-服务只绑 `127.0.0.1`，默认端口 **8761**（`mise run sidecar -- --port` 改），前端经 `VITE_SIDECAR_URL` 覆盖基址。CORS 仅放行 localhost / `tauri://localhost`。端点定义在 `sidecar/keeper_engine/controller/*`（经 DI 注入 service），前端客户端镜像在 `apps/desktop/src/api.ts`——**改任一端的请求/响应结构，两边都要同步**。
+服务只绑 `127.0.0.1`，默认端口 **8761**（`mise run sidecar -- --port` 改），前端经 `VITE_SIDECAR_URL` 覆盖基址。CORS 仅放行 localhost / `tauri://localhost`。端点定义在 `sidecar/keeper_engine/controller/*`（经 DI 注入 service），前端客户端镜像在 `desktop/src/api.ts`——**改任一端的请求/响应结构，两边都要同步**。
 
 **鉴权约定**：prod 模式下 Tauri 壳启动时生成随机 token 并经 `KEEPER_AUTH_TOKEN` env 注入 sidecar；所有端点均需鉴权——JSON 端点从请求头 `X-Keeper-Token` 读取，`/thumbnail` 从 query 参数 `token` 读取；鉴权失败返回纯 HTTP 401（不包 ApiResponse），前端收到 401 后合成 `ApiError(110003, "AUTH_FAILED")`。dev/独立运行时 `KEEPER_AUTH_TOKEN` 留空则不鉴权，方便本地调试。此外 `/thumbnail` 仅放行 `workspace_dir` 内的路径，请求超出范围返回 404。
 
@@ -141,7 +141,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 
 ## 关键约定
 
-- **依赖来源**：sidecar 在 `sidecar/pyproject.toml` 声明、`uv.lock` 锁定；改完跑 `mise run install`。前端在 `apps/desktop/package.json`。
+- **依赖来源**：sidecar 在 `sidecar/pyproject.toml` 声明、`uv.lock` 锁定；改完跑 `mise run install`。前端在 `desktop/package.json`。
 - **工具链钉死**：`[tools]` 里所有版本必须是具体版本号，禁止 `latest`，保证可复现。新增工具/命令一律沉淀到 `mise.toml`，不散落到零散脚本。
 - **OpenCV 三包冲突**：`sidecar/pyproject.toml` 的 `[tool.uv] override-dependencies` 用「marker 永假」把 `opencv-python(-headless)` 从依赖树剔除，保住 `opencv-contrib-python` 的 `cv2.saliency`。别把它们加回依赖。
 - **不静默降级**：本地推理依赖缺失或模型加载失败立刻抛异常，不悄悄退化。

@@ -47,7 +47,7 @@ mise run gen-update-keys
 ```
 
 **② 公钥粘进配置**：把 `~/.tauri/keeper-updater.key.pub` 的**整段内容**填到
-`apps/desktop/src-tauri/tauri.conf.json5` 的 `plugins.updater.pubkey`（替换 `REPLACE_WITH_CONTENT_OF_GENERATED_PUBLIC_KEY`）。
+`desktop/src-tauri/tauri.conf.json5` 的 `plugins.updater.pubkey`（替换 `REPLACE_WITH_CONTENT_OF_GENERATED_PUBLIC_KEY`）。
 
 **③ 私钥进 GitHub Secrets**（仓库 Settings → Secrets and variables → Actions）：
 
@@ -60,7 +60,7 @@ mise run gen-update-keys
 
 ## 4. 每次发版的固定动作
 
-1. **改版本号**：把 `apps/desktop/src-tauri/tauri.conf.json5` 的 `version` 改成本次版本（如 `0.4.0`）。
+1. **改版本号**：把 `desktop/src-tauri/tauri.conf.json5` 的 `version` 改成本次版本（如 `0.4.0`）。
    这是 updater 比对的**唯一权威**——它必须等于 tag 里的版本号，否则版本判断会失准。
    （`package.json` 的 version 与它独立，可一并对齐便于查阅。）
 2. **打 tag 发版**：
