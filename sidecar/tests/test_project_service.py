@@ -702,3 +702,21 @@ def test_assess_kept_count_follows_project_guarantee_fixed(tmp_path):
     kept_hi = _count_kept_in_group(set_hi, p_hi.id, "g1")
     assert kept_lo == 1   # N = max(ceil(5×0.2)=1, 1) = 1
     assert kept_hi == 3   # N = max(ceil(5×0.2)=1, 3) = 3
+
+
+def test_photo_mapper_get_and_group_delete(svc, tmp_path):
+    """mapper 新增：按 id 取单张照片；按 group_key 删单个组。"""
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    pid = service.create("mapper试", str(src)).id
+    service.group(pid)  # FakeGrouping → g1 / g2
+
+    g1_photos = service._photos.by_group(pid, "g1")
+    one = g1_photos[0]
+    # get：命中返回该张；未命中返回 None
+    assert service._photos.get(pid, one.id).id == one.id
+    assert service._photos.get(pid, 999999) is None
+    # delete：删 g1 组行后，by_project 的组里不再含 g1（照片行不受影响）
+    service._groups.delete(pid, "g1")
+    keys = {g.group_key for g in service._groups.by_project(pid)}
+    assert "g1" not in keys and "g2" in keys
