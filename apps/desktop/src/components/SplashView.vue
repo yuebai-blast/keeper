@@ -4,8 +4,9 @@
 //  - 普通加载完成 → 短暂展示「就位」后自动进入应用。
 //  - 首次下载完成 → 出现按钮，由用户点击进入。
 //  - 下载失败 → 可重试；依赖缺失（致命）→ 不可重试，提示修复。
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useEngineStore } from "../stores/engine";
 
 const engine = useEngineStore();
@@ -64,7 +65,16 @@ const pct = computed(() => {
   if (hasDownload.value || engine.firstRun) return p.percent;
   return p.total ? Math.round((p.current / p.total) * 100) : 0;
 });
-const version = computed(() => engine.health?.version ?? "");
+// 启动首屏底栏显示「应用实际版本」：取 Tauri 应用版本（tauri.conf 的 version，每次发版会改），
+// 而非 sidecar 引擎写死的 __version__（长期停在 0.1.0）。非 Tauri 环境（纯浏览器 dev）取不到则留空不显示。
+const version = ref("");
+onMounted(async () => {
+  try {
+    version.value = await getVersion();
+  } catch {
+    version.value = "";
+  }
+});
 
 // 普通加载（非首次）完成后自动进入；首次下载完成则等用户点按钮。
 const autoEntering = ref(false);
@@ -175,7 +185,7 @@ onUnmounted(() => {
       </Transition>
     </div>
 
-    <footer v-if="version" class="ver">KEEPER ENGINE · v{{ version }}</footer>
+    <footer v-if="version" class="ver">KEEPER · v{{ version }}</footer>
   </div>
 </template>
 
