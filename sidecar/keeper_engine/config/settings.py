@@ -95,6 +95,12 @@ class Settings(BaseSettings):
     def db_path(self) -> Path:
         return self.home / "keeper.db"
 
+    # 运行日志：落在数据根下，便于实机（打包态）排错时直接取——打包 app 的 stderr 不可见。
+    @computed_field
+    @property
+    def log_path(self) -> Path:
+        return self.home / "sidecar.log"
+
     @computed_field
     @property
     def ark_key_file(self) -> Path:

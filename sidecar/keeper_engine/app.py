@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
+from .config.settings import Settings
 from .container import Container
 from .controller import (
     assess_controller,
@@ -25,18 +28,48 @@ from .middleware.auth import AuthMiddleware
 from .response.envelope import install_exception_handlers
 
 
+def _setup_logging(settings: Settings) -> None:
+    """把 keeper_engine 的日志同时写到 stderr 与 {home}/sidecar.log（滚动）。
+
+    打包（实机）态下 sidecar 的 stderr 不可见，排错全靠这个文件——尤其是各 service 里
+    `logger.exception(...)` 打出的完整 traceback。幂等：重复调用不会叠加 handler。
+    """
+    root = logging.getLogger("keeper_engine")
+    root.setLevel(logging.INFO)
+    if any(getattr(h, "_keeper_log", False) for h in root.handlers):
+        return  # 已装过（测试里可能多次 create_app），不重复加
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    stream = logging.StreamHandler()
+    stream.setFormatter(fmt)
+    stream._keeper_log = True  # type: ignore[attr-defined]
+    root.addHandler(stream)
+
+    try:
+        settings.home.mkdir(parents=True, exist_ok=True)
+        file = RotatingFileHandler(
+            settings.log_path, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        file.setFormatter(fmt)
+        file._keeper_log = True  # type: ignore[attr-defined]
+        root.addHandler(file)
+    except OSError:
+        pass  # 日志文件不可写不致命，至少还有 stderr
+
+
 def create_app() -> FastAPI:
     """构建并返回 FastAPI 应用（容器挂在 app.container 上，便于测试 override）。"""
     container = Container()
     settings = container.settings()
+    _setup_logging(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # 启动自检日志（非敏感）：确认 Tauri 注入的 env 是否到位。
-        print(
-            f"[boot] home={settings.home} models_dir={settings.models_dir} "
-            f"auth={'on' if settings.auth_token else 'off'}",
-            flush=True,
+        logging.getLogger("keeper_engine.app").info(
+            "[boot] home=%s models_dir=%s log=%s auth=%s",
+            settings.home, settings.models_dir, settings.log_path,
+            "on" if settings.auth_token else "off",
         )
         # 建全部 sqlite 表（模型状态 + 项目工作流），幂等。
         container.database().create_all()

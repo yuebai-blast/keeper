@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import datetime
@@ -30,6 +31,8 @@ from ..response.group_response import GroupResponse
 from ..util import imaging
 from ..vo.group import Group
 from .readiness_service import ReadinessService
+
+logger = logging.getLogger("keeper_engine.service.grouping")
 
 # ── 可调旋钮 ────────────────────────────────────────────────────────────────
 GROUP_DISTANCE_THRESHOLD = 0.4   # 1 − 综合相似度；越小分得越细（同组要求越像）
@@ -76,6 +79,8 @@ class GroupingService:
             except VisionUnavailable as e:
                 raise BizException(BizCode.MODEL_NOT_READY, f"本地模型不可用：{e}") from e
             except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
+                # 完整 traceback 落日志（含出错的依赖与行号），便于定位；用户面只回简短 `类型: 消息`。
+                logger.exception("分组取特征失败 path=%s", p)
                 errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
             if on_progress is not None:
                 on_progress()  # 每张处理完推进度（含失败图），与层①评测一致

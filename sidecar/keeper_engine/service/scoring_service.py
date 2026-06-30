@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from ..client.scorer import Preview, Scorer
@@ -17,6 +18,8 @@ from ..response.score_response import ScoreResponse
 from ..util import imaging
 from .params_service import ParamsService
 from .ranking_service import RankingService
+
+logger = logging.getLogger("keeper_engine.service.scoring")
 
 
 class ScoringService:
@@ -44,6 +47,8 @@ class ScoringService:
                 img = imaging.load_for_analysis(p)
                 previews.append(Preview(path=p, jpeg=imaging.make_preview(img)))
             except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
+                # 完整 traceback 落日志（含出错的依赖与行号），便于定位；用户面只回简短 `类型: 消息`。
+                logger.exception("层②预览生成失败 path=%s", p)
                 errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
 
         model = req.model or self._settings.ark_model

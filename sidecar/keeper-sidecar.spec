@@ -35,6 +35,18 @@ for pkg in ("torch", "torchvision", "onnxruntime", "insightface", "pyiqa",
     hiddenimports += h
 hiddenimports += collect_submodules("uvicorn")
 
+# insightface 的 get_object() 在【冻结态】固定去 sys._MEIPASS/objects/ 找 .pkl
+# （非冻结态才是包内 data/objects/）。collect_all 只按包内相对路径收到 insightface/data/objects/，
+# 路径对不上 → get_object 返回 None → landmark_3d_68 的 mean_lmk=None → 每张有脸的图在姿态估计
+# estimate_affine_matrix_3d23d(None,...) 处 None.shape 崩（dev 正常、实机崩的元凶）。
+# 故把 data/objects/* 额外放一份到冻结根的顶层 objects/，正好命中 _MEIPASS/objects/。
+import insightface as _insightface  # spec 执行时已可导入（上面 collect_all 用到）
+
+_if_objects = os.path.join(os.path.dirname(_insightface.__file__), "data", "objects")
+for _obj in glob(os.path.join(_if_objects, "*")):
+    if os.path.isfile(_obj):
+        datas.append((_obj, "objects"))
+
 a = Analysis(
     ["entry.py"],
     pathex=[],
