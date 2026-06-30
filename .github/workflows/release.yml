@@ -1,17 +1,15 @@
-name: Desktop Release
+name: Release
 on:
   push:
-    tags: ["desktop-v*"]
+    # 本仓只产出一个可发布产品（桌面应用，sidecar 随其打包、不独立发布），故 tag 不带组件前缀，直接 v*。
+    tags: ["v*.*.*"]
   workflow_dispatch: {}   # 手动逃生口：紧急重发/回滚验证
 
 jobs:
-  # 发版前质量门禁（复用 CI 同一份定义，不过不许出包）：
-  #   verify-desktop —— 前端类型检查 + Rust 格式/clippy，在三平台矩阵各跑一遍；
-  #   verify-sidecar —— sidecar lint + test（打包会把它冻结进安装包，发版前先验）。
-  verify-desktop:
-    uses: ./.github/workflows/desktop-quality.yml
-  verify-sidecar:
-    uses: ./.github/workflows/sidecar-quality.yml
+  # 发版前质量门禁（复用 CI 同一份定义，不过不许出包）：desktop（前端类型检查 + Rust 格式/clippy，
+  # 双平台矩阵）+ sidecar（lint + test，打包会把它冻结进安装包，发版前先验）。
+  verify:
+    uses: ./.github/workflows/quality.yml
 
   # 版本一致性闸门：tag 版本号必须与 tauri.conf.json5 的 version 逐字一致。
   # 二者分别是 latest.json 的版本来源（CI 从 tag 推）与应用自报版本（烤进安装包元数据、
@@ -25,7 +23,7 @@ jobs:
         if: github.ref_type == 'tag'
         run: |
           set -euo pipefail
-          TAG_VERSION="${GITHUB_REF_NAME#desktop-v}"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
           # tauri.conf.json5 带注释，jq 解析不了；按行首缩进锚定顶层 "version" 键，避开注释里的同名字样。
           CONFIG_VERSION=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' \
             desktop/src-tauri/tauri.conf.json5 | head -1)
@@ -71,7 +69,7 @@ jobs:
                 { "title": "### ⏪ 回退", "labels": ["revert"] }
               ],
               "label_extractor": [
-                { "pattern": "^(feat|fix|perf|refactor|revert|build|chore|ci|docs|style|test)[(!:]", "on_property": "title", "target": "$1" }
+                { "pattern": "^(feat|fix|perf|refactor|revert|build|chore|ci|docs|style|test)[^:]*:.*", "on_property": "title", "target": "$1" }
               ]
             }
         env:
@@ -82,8 +80,8 @@ jobs:
           CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         run: |
           set -euo pipefail
-          # 版本号给 Release 标题用（去掉 desktop-v 前缀）。
-          echo "version=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
+          # 版本号给 Release 标题用（去掉 v 前缀）。
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           : > notes.md
           # annotated tag 注释置顶（人工写的本次重点）；轻量 tag（直接指向 commit）跳过。
           if [ "${{ github.ref_type }}" = "tag" ] && [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
@@ -91,17 +89,22 @@ jobs:
             printf '\n\n' >> notes.md
           fi
           printf '%s\n' "$CHANGELOG" >> notes.md   # 经 env 传入（不用表达式直插脚本），避免特殊字符破坏脚本
+          # 空正文兜底：注释为空 + 变更日志被全过滤（提交全是 docs/chore/ci 等）时正文会整篇空白，补占位。
+          # changelog action 的 empty_template 只兜「这段范围零提交」，兜不住「有提交但全被过滤」，故在此统一判空。
+          if [ -z "$(tr -d '[:space:]' < notes.md)" ]; then
+            echo "- 本次无面向用户的变更" > notes.md
+          fi
           echo "---- release 正文 ----"; cat notes.md
       - name: Create release with notes
         uses: softprops/action-gh-release@v2
         with:
-          name: Keeper desktop v${{ steps.body.outputs.version }}   # 标题带组件名+版本号（monorepo 多组件要区分）；默认是 tag 名，不好看
+          name: Keeper v${{ steps.body.outputs.version }}   # 标题=产品名+版本号；默认是 tag 名，不好看，显式设
           body_path: notes.md                               # 正文（body）：tag 注释置顶 + 分类变更日志
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
-    needs: [verify-desktop, verify-sidecar, verify-version, release-notes]   # 门禁全绿 + Release 已建才出包
+    needs: [verify, verify-version, release-notes]   # 门禁全绿 + Release 已建才出包
     permissions:
       contents: write   # 让 GITHUB_TOKEN 能创建/写入 Release
     strategy:
@@ -119,9 +122,11 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v6
+      # mise-action 默认 install: true，已自动装 [tools] 工具链，无需再写 `mise install`。
       - uses: jdx/mise-action@v4
-      - run: mise install
-      - run: mise run install
+      # 项目依赖显式装、--frozen 按 lockfile 精确安装保证可复现（mise-action 只管工具链）。
+      - run: mise run install-sidecar --frozen
+      - run: mise run install-desktop --frozen
       - run: mise run bundle-sidecar
       - run: mise run stage-sidecar
       - name: Build Tauri app
@@ -192,9 +197,9 @@ jobs:
       - name: Compose latest.json
         run: |
           set -euo pipefail
-          # 版本号取自 tag（去掉 desktop-v 前缀）——必须与 tauri.conf.json5 的 version 一致，
+          # 版本号取自 tag（去掉 v 前缀）——必须与 tauri.conf.json5 的 version 一致，
           # 否则 updater 的版本比对会失准（发版前务必把 config version 改成本次版本）。
-          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          VERSION="${GITHUB_REF_NAME#v}"
           PLATFORMS=$(jq -s 'reduce .[] as $f ({}; . * $f)' frags/*.json)
           jq -n \
             --arg v "$VERSION" \

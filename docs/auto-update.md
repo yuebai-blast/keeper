@@ -30,7 +30,7 @@
 | `src/components/UpdateBanner.vue` | 顶栏下方非阻塞提示横幅 |
 | `src/App.vue` | 启动时**静默检查**（失败不打扰，仅有新版才弹横幅） |
 | `src/pages/SettingsPage.vue` | 「版本与更新」区：显示当前版本 + **手动检查更新** |
-| `.github/workflows/desktop-release.yml` | 发版 CI：签名构建 + 上传更新包 + 聚合生成 `latest.json` |
+| `.github/workflows/release.yml` | 发版 CI：签名构建 + 上传更新包 + 聚合生成 `latest.json` |
 | `mise.toml` → `gen-update-keys` | 生成签名密钥对的一次性命令 |
 
 UI 行为：启动静默查一次，有新版才从顶栏滑入横幅（「更新 / 稍后」）；点更新后台下载显示进度，装好提示「立即重启」。设置页另有手动「检查更新」。
@@ -60,19 +60,19 @@ mise run gen-update-keys
 
 ## 4. 每次发版的固定动作
 
-1. **改版本号**：把 `desktop/src-tauri/tauri.conf.json5` 的 `version` 改成本次版本（如 `0.4.0`）。
-   这是 updater 比对的**唯一权威**——它必须等于 tag 里的版本号，否则版本判断会失准。
-   （`package.json` 的 version 与它独立，可一并对齐便于查阅。）
-2. **打 tag 发版**：
+1. **一条命令发版**：用收口的 mise 任务，它会校验环境 → 改 `desktop/src-tauri/tauri.conf.json5` 的 `version`
+   → 提交 → 打 `v<版本>` tag → 推送触发 CI。本仓单一产品，tag 不带组件前缀，直接 `v0.4.0`：
 
    ```bash
-   git tag desktop-v0.4.0 && git push origin desktop-v0.4.0
+   mise run release v0.4.0 "本次更新说明"   # 版本号/说明均可选；缺省取最新稳定 tag patch+1
    ```
 
-   只触发 `desktop-release.yml`：三平台签名构建 → 上传 `.dmg`/`-setup.exe`（首装）+ `.app.tar.gz`/`-setup.exe`（更新包）+ `.sig` → 聚合任务生成 `latest.json` 上传到同一 Release。
+   `tauri.conf.json5` 的 `version` 是 updater 比对的**唯一权威**——CI 的 `verify-version` 会强制它与 tag
+   逐字一致。（`package.json` 的 version 与它独立。）
+2. tag 推上去后只触发 `release.yml`：双平台（Apple Silicon mac + Windows）签名构建 → 上传 `.dmg`/`-setup.exe`（首装）+ `.app.tar.gz`/`-setup.exe`（更新包）+ `.sig` → 聚合任务生成 `latest.json` 上传到同一 Release。
 3. 老版本用户下次打开应用即被静默检查命中，弹横幅提示升级。
 
-`latest.json` 里的 `version` 自动取自 tag（去掉 `desktop-v` 前缀），因此第 1 步的 config version 必须与之一致。
+`latest.json` 里的 `version` 自动取自 tag（去掉 `v` 前缀），因此 config version 必须与之一致（`mise run release` 已自动保证）。
 
 ## 5. ⚠️ macOS 签名/公证前提（当前未做）
 

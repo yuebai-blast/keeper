@@ -3,12 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri"
-  },
   "dependencies": {
     "vue": "^3.5.13",
     "vue-router": "^4.5.0",

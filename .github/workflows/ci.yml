@@ -1,0 +1,14 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # 质量门禁抽到可复用 workflow，与 release.yml 发版前门禁共用同一份定义（含 desktop + sidecar 两条检查）。
+  quality:
+    uses: ./.github/workflows/quality.yml

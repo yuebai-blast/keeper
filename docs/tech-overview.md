@@ -26,8 +26,8 @@ mise install              # 装钉死版本的 python / uv / node / pnpm / rust
 mise run install          # 同步 sidecar(uv sync) + desktop(pnpm install) 依赖
 mise run sidecar          # 启动推理服务（FastAPI，默认 127.0.0.1:8761）
 mise run app              # 启动 Tauri 桌面应用（开发模式）
-mise run test / lint      # sidecar 测试 / ruff
-mise run localscore -- <img>   # 对单图跑层①评分并打印明细（标定用）
+mise run test-sidecar / lint-sidecar   # sidecar 测试 / ruff
+mise run localscore-sidecar -- <img>   # 对单图跑层①评分并打印明细（标定用）
 ```
 
 > **OpenCV 三包冲突**：`pyproject.toml` 的 `[tool.uv] override-dependencies` 用「marker 永假」把 `opencv-python(-headless)` 从依赖树剔除，保住 `opencv-contrib-python` 的 `cv2.saliency`。别把它们加回去。
@@ -154,7 +154,7 @@ base = 0.45·TOPIQ + 0.20·CLIP-IQA+ + 0.35·主体锐度(归一)   → 0–100
 - **技术质量**：主脸够大用 TOPIQ-nr-face（人像更贴合），否则用通用 TOPIQ-nr；小脸/检不到脸回退整图。
 - **主体锐度**：优先用人脸框内拉普拉斯方差，无脸时回退显著区（`cv2.saliency`）/中心区。
 - **闭眼**：68 关键点算 EAR；点序异常返回 None 按未知处理。
-- 全部阈值集中在文件顶部，用 `mise run localscore` 在真实照片上看分项标定。
+- 全部阈值集中在文件顶部，用 `mise run localscore-sidecar` 在真实照片上看分项标定。
 
 ### 2.8 层②大模型打分（`scoring_service` + `client/scorer`）
 

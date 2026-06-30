@@ -14,11 +14,12 @@
   "identifier": "ai.mintpop.keeper",   // 全局唯一 bundle id（域名 keeper.mintpop.ai 的反向 DNS）；macOS/Windows 用它认应用，一经发布勿改。结尾不能用 .app（会被 macOS 当成应用包，目录被画叉打不开）
 
   "build": {
-    // dev：tauri 起壳前先跑的前端 dev server 命令 + 它的地址
-    "beforeDevCommand": "pnpm dev",
+    // dev：tauri 起壳前先跑的前端 dev server 命令 + 它的地址。
+    // 直接调底层 vite（命令唯一权威在 mise/此处，不再转调 package.json 的 dev 脚本）。
+    "beforeDevCommand": "pnpm vite",
     "devUrl": "http://localhost:1420",
-    // build：打包前先把前端编译成静态资源，产物目录由 frontendDist 指定
-    "beforeBuildCommand": "pnpm build",
+    // build：打包前先把前端编译成静态资源（vue-tsc 类型检查 + vite 打包），产物目录由 frontendDist 指定。
+    "beforeBuildCommand": "pnpm vue-tsc --noEmit && pnpm vite build",
     "frontendDist": "../dist"        // 相对 src-tauri/ 的前端构建产物目录（被嵌入应用）
   },
 
