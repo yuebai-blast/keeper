@@ -11,9 +11,7 @@ on:
     workflows:
       - Desktop CI
       - Sidecar CI
-      - Website CI
       - Desktop Release
-      - Website Release
     types: [completed]
 
 permissions:
